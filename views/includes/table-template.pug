@@ -1,0 +1,12 @@
+div(id=`${tableId}-container`, class="table-responsive data-table", style=`${(hidden ? "display : none" : "")}`)
+  table(id=`${tableId}`, class=`table table-striped mb-0 ${lazyload ? "lazyload" : ""}`, clicktriggerid=`${clickTriggerId}`)
+    thead
+      tr
+        each header, index in headers
+          - var className = header.className  ? header.className + " ": "";
+          th(class=`${className}data-header`) #{header.name}
+    tbody
+      tr
+        td
+          div(class="spinner-border", role="status")
+            span(class="sr-only") Loading...

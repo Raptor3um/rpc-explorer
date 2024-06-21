@@ -21,7 +21,7 @@ div(class="tab-content")
 						span !{sbInfo.alertBodyHtml}
 
 						if (sbInfo.referenceUrl && sbInfo.referenceUrl.trim().length > 0 && sbInfo.alertBodyHtml.indexOf(sbInfo.referenceUrl) == -1)
-							span  
+							span
 								a(href=sbInfo.referenceUrl) Read more
 
 				else
@@ -29,7 +29,7 @@ div(class="tab-content")
 						span #{sbInfo.summary}
 
 						if (sbInfo.referenceUrl && sbInfo.referenceUrl.trim().length > 0)
-							span  
+							span
 								a(href=sbInfo.referenceUrl) Read more
 
 		div(class="card mb-3 shadow-sm")
@@ -55,6 +55,11 @@ div(class="tab-content")
 								span #{moment.utc(new Date(result.getblock.time * 1000)).format("Y-MM-DD HH:mm:ss")} utc
 								- var timeAgoTime = result.getblock.time;
 								include ./time-ago.pug
+						if(result.getblock.flags)
+							div(class="row")
+								div(class="summary-split-table-label") Flags
+								div(class="summary-split-table-content monospace")
+									span #{result.getblock.flags}
 
 						div(class="row")
 							div(class="summary-split-table-label") Transactions
@@ -90,7 +95,7 @@ div(class="tab-content")
 							div(class="row")
 								div(class="summary-split-table-label") Weight
 								div(class="summary-split-table-content monospace")
-									span(style="") #{result.getblock.weight.toLocaleString()} wu 
+									span(style="") #{result.getblock.weight.toLocaleString()} wu
 
 									span(class="text-muted")  (#{new Decimal(100 * result.getblock.weight / coinConfig.maxBlockWeight).toDecimalPlaces(2)}% full)
 
@@ -100,7 +105,7 @@ div(class="tab-content")
 										div(class="col-md-10 col-lg-8 col-12")
 											div(class="progress my-1 mr-2", style="height: 4px;")
 												div(class="progress-bar", role="progressbar", style=("width: " + fullPercent + "%;"), aria-valuenow=parseInt(100 * result.getblock.weight / coinConfig.maxBlockWeight), aria-valuemin="0" ,aria-valuemax="100")
-									
+
 
 						div(class="row")
 							div(class="summary-split-table-label") Size
@@ -110,11 +115,11 @@ div(class="tab-content")
 							div(class="summary-split-table-label") Confirmations
 							div(class="summary-split-table-content monospace")
 								if (result.getblock.confirmations < 6)
-									span(class="font-weight-bold text-warning") #{result.getblock.confirmations.toLocaleString()} 
+									span(class="font-weight-bold text-warning") #{result.getblock.confirmations.toLocaleString()}
 										a(data-toggle="tooltip", title="Fewer than 6 confirmations is generally considered 'unsettled' for high-value transactions. The applicability of this guidance may vary.")
 											i(class="fas fa-unlock-alt")
 								else
-									span(class="font-weight-bold text-success font-weight-bold") #{result.getblock.confirmations.toLocaleString()} 
+									span(class="font-weight-bold text-success font-weight-bold") #{result.getblock.confirmations.toLocaleString()}
 										a(data-toggle="tooltip", title="6 confirmations is generally considered 'settled'. High-value transactions may require more; low-value transactions may require less.")
 											i(class="fas fa-lock")
 
@@ -134,7 +139,7 @@ div(class="tab-content")
 							div(class="summary-split-table-label") Difficulty
 							div(class="summary-split-table-content monospace")
 								- var difficultyData = utils.formatLargeNumber(result.getblock.difficulty, 3);
-								
+
 								span(title=parseFloat(result.getblock.difficulty).toLocaleString(), data-toggle="tooltip")
 									span #{difficultyData[0]}
 									span  x 10
@@ -166,7 +171,7 @@ div(class="tab-content")
 								span  x 10
 								sup #{chainworkData[1].exponent}
 								span  hashes
-								
+
 								span(class="text-muted")  (#{result.getblock.chainwork.replace(/^0+/, '')})
 
 						if (result.getblock.miner)
@@ -174,21 +179,21 @@ div(class="tab-content")
 								div(class="summary-split-table-label") Miner
 								div(class="summary-split-table-content monospace")
 									if (result.getblock.miner)
-										span #{result.getblock.miner.name} 
+										span #{result.getblock.miner.name}
 										if (result.getblock.miner.identifiedBy)
 											span(data-toggle="tooltip", title=("Identified by: " + result.getblock.miner.identifiedBy))
 												i(class="fas fa-info-circle")
 									else
-										span ? 
+										span ?
 										span(data-toggle="tooltip", title="Unable to identify miner")
 											i(class="fas fa-info-circle")
-									
+
 
 		div(class="card mb-3 shadow-sm")
 			div(class="card-header")
 				div(class="row")
 					div(class="col-md-4")
-						h2(class="h6 mb-0") #{txCount.toLocaleString()} 
+						h2(class="h6 mb-0") #{txCount.toLocaleString()}
 							if (txCount == 1)
 								span Transaction
 							else
@@ -199,13 +204,13 @@ div(class="tab-content")
 							span(class="mr-2") Show
 							div(class="btn-group", role="group")
 								a(href=(paginationBaseUrl + "?limit=20"), class="btn btn-sm btn-primary px-2", class=((limit == 20 && txCount > limit) ? "active" : false)) 20
-								
+
 								if (txCount > 50)
 									a(href=(paginationBaseUrl + "?limit=50"), class="btn btn-sm btn-primary px-2", class=(limit == 50 ? "active" : false)) 50
-								
+
 								if (txCount > 100)
 									a(href=(paginationBaseUrl + "?limit=100"), class="btn btn-sm btn-primary px-2", class=(limit == 100 ? "active" : false)) 100
-								
+
 								a(href=(paginationBaseUrl + "?limit=3000"), class="btn btn-sm btn-primary px-2", class=(limit >= txCount ? "active" : false)) all
 
 			- var fontawesomeInputName = "sign-in-alt";
@@ -219,23 +224,21 @@ div(class="tab-content")
 						div(class="card-header monospace")
 							if (tx && tx.txid)
 								span ##{(txIndex + offset + 1).toLocaleString()}
-								span  &ndash; 
+								span  &ndash;
 								a(href=("/tx/" + tx.txid)) #{tx.txid}
 
 								if (global.specialTransactions && global.specialTransactions[tx.txid])
-									span  
+									span
 									a(data-toggle="tooltip", title=(coinConfig.name + " Fun! See transaction for details"))
 										i(class="fas fa-certificate text-primary")
-									
+
 						div(class="card-body px-lg-3 px-2")
 							//pre
 							//	code(class="json bg-light") #{JSON.stringify(result.txInputsByTransaction[tx.txid], null, 4)}
-							if (true)
-								- var txInputs = result.txInputsByTransaction[tx.txid];
-								- var blockHeight = result.getblock.height;
+							- var blockHeight = result.getblock.height;
 
-								include ./transaction-io-details.pug
-								
+							include ./transaction-io-details.pug
+
 					//pre
 					//	code(class="json bg-light") #{JSON.stringify(tx, null, 4)}
 
@@ -248,11 +251,11 @@ div(class="tab-content")
 					- var paginationUrlFunction = function(x) {
 						- return paginationBaseUrl + "?limit=" + limit + "&offset=" + ((x - 1) * limit);
 					- }
-					
+
 					hr
 
 					include ./pagination.pug
-					
+
 	div(id="tab-json", class="tab-pane", role="tabpanel")
 		- var blockDetails = JSON.parse(JSON.stringify(result.getblock));
 		- blockDetails.tx = "See 'Transaction IDs'";
@@ -271,4 +274,3 @@ div(class="tab-content")
 			div(id="tab-json-tx-ids", class="tab-pane", role="tabpanel")
 				pre
 					code(class="json bg-light") #{JSON.stringify(result.getblock.tx, null, 4)}
-

@@ -1,0 +1,157 @@
+div(class="card mb-3 shadow-sm")
+  div(class="card-header clearfix")
+    div(class="float-left")
+      span(class="h6")
+        if (addressDetails && addressDetails.txCount)
+          if (addressDetails.txCount == 1)
+            span 1 Transaction
+          else
+            span #{addressDetails.txCount.toLocaleString()} Transactions
+        else
+          span Transactions
+
+        if (config.addressApi)
+          if (config.addressApi == "electrumx")
+            small.text-muted.border-dotted.ml-2(title=`The list of transaction IDs for this address was queried from ElectrumX (using the configured server(s))` data-toggle="tooltip") Trust Note
+          else
+            small.text-muted.border-dotted.ml-2(title=`The list of transaction IDs for this address was queried from ${config.addressApi}` data-toggle="tooltip") Trust Note
+
+
+    if (!crawlerBot && txids && txids.length > 1 && addressApiSupport.sortDesc && addressApiSupport.sortAsc)
+      div(class="float-right")
+        a(href="#", class="pull-right dropdown-toggle", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false")
+          if (sort == "desc")
+            span Newest First
+          else
+            span Oldest First
+
+        div(class="dropdown-menu dropdown-menu-right")
+          a(href=("/address/" + address), class="dropdown-item")
+            if (sort == "desc")
+              i(class="fa fa-check")
+            span  Newest First
+          a(href=("/address/" + address + "?sort=asc"), class="dropdown-item")
+            if (sort != "desc")
+              i(class="fa fa-check")
+            span  Oldest First
+
+    else if (txids && txids.length > 1 && addressApiSupport.sortDesc && !addressApiSupport.sortAsc)
+      div.float-right
+        span.text-muted Newest First
+
+  div(class="card-body")
+    if (conflictedTxidResults)
+      div(class="alert alert-warning", style="padding-bottom: 0;")
+        div(class="float-left", style="width: 55px; height: 50px; font-size: 18px;")
+          i(class="fas fa-exclamation-triangle fa-2x", style="margin-top: 10px;")
+        h4(class="alert-heading h6 font-weight-bold") Trust Warning
+        p
+          span The transaction history for this address was requested from mulitple ElectrumX servers and the results did not match. The results below were obtained only from
+          span(class="font-weight-bold") #{electrumHistory.server}
+
+
+    if (true)
+      if (addressApiError && addressApiError.error && addressApiError.error.code && addressApiError.error.code == -32600)
+        span Failed to retrieve transaction history from ElectrumX. See
+        a(href="https://github.com/janoside/btc-rpc-explorer/issues/67") Issue #67
+        span  for more information.
+
+
+      else if (addressApiError && addressApiError.userText)
+        div.text-danger Error: #{addressApiError.userText}
+
+      else if (addressDetailsErrors && addressDetailsErrors.length > 0)
+        each err in addressDetailsErrors
+          if (err.e && err.e.error && err.e.error.message == "history too large")
+            span Failed to retrieve transaction history from ElectrumX. See
+            a(href="https://github.com/janoside/btc-rpc-explorer/issues/67") Issue #67
+            span  for more information.
+
+          else if (err == "No address API configured")
+            span No address API is configured. See
+            a(href="https://github.com/janoside/btc-rpc-explorer/blob/master/.env-sample") the example configuration file
+            span  for help setting up an address API if desired.
+
+      else if (transactions.length == 0)
+        span No transactions found
+
+      each tx, txIndex in transactions
+        //pre
+        //	code.json.bg-light #{JSON.stringify(tx, null, 4)}
+        div(class=("xcard bg-light rounded shadow-sm " + ((txIndex < (transactions.length - 1) || txids.length > limit) ? "mb-4" : "")))
+          div(class="card-header monospace clearfix")
+            div(class="float-left", style="margin-right: 0px;")
+              if (sort == "desc")
+                span ##{(addressDetails.txCount - offset - txIndex).toLocaleString()}
+              else
+                span ##{(offset + txIndex + 1).toLocaleString()}
+              span  &ndash;
+
+            div(class="row")
+              div(class="col-md-6")
+                if (tx && tx.txid)
+                  a(href=("/tx/" + tx.txid)) #{tx.txid}
+
+                  if (global.specialTransactions && global.specialTransactions[tx.txid])
+                    span
+                    a(data-toggle="tooltip", title=(coinConfig.name + " Fun! See transaction for details"))
+                      i(class="fas fa-certificate text-primary")
+
+              div(class="col-md-6")
+                div(class="text-md-right")
+                  if (tx.blocktime)
+                    span #{moment.utc(new Date(tx["blocktime"] * 1000)).format("Y-MM-DD HH:mm:ss")} utc
+                    - var timeAgoTime = tx.blocktime;
+                    include time-ago.pug
+
+                  else
+                    span(class="text-danger") Unconfirmed
+
+              div(class="col")
+                if (addrGainsByTx[tx.txid])
+                  - var currencyValue = addrGainsByTx[tx.txid];
+                  - var tokenName = assetName;
+                  span(class="text-success") +
+                    include value-display.pug
+
+                  if (addrLossesByTx[tx.txid])
+                    span  /
+
+                if (addrLossesByTx[tx.txid])
+                  - var currencyValue = addrLossesByTx[tx.txid];
+                  -var tokenName = assetName;
+                  span(class="text-danger") -
+                    include value-display.pug
+
+          div(class="card-body")
+            - var blockHeight = blockHeightsByTxid[tx.txid];
+            - var txIOHighlightAddress = address;
+
+            include transaction-io-details.pug
+
+    else
+      p Since this explorer is database-free, it doesn't natively support address transaction history. However, you can configure it to communicate with one or more ElectrumX servers to build and display this data. In doing so, you should be aware that you'll be trusting those ElectrumX servers. If you configure multiple servers the results obtained from each will be cross-referenced against the others. Communicating with ElectrumX servers will also impact your privacy since the servers will know what addresses you're interested in. If these tradeoffs are acceptable, you can see a list of public ElectrumX servers here:
+      a(href="https://uasf.saltylemon.org/electrum") https://uasf.saltylemon.org/electrum
+
+    if (false)
+      pre
+        code.json.bg-light #{JSON.stringify(transactions, null, 4)}
+
+    if (!crawlerBot && addressDetails && addressDetails.txCount > limit)
+      - var txCount = addressDetails.txCount;
+      - var pageNumber = offset / limit + 1;
+      - var pageCount = Math.floor(txCount / limit);
+      - if (pageCount * limit < txCount) {
+        - pageCount++;
+      - }
+      - var paginationUrlFunction = function(x) {
+        - var pageUrl = paginationBaseUrl + "&limit=" + limit + "&offset=" + ((x - 1) * limit) + "&startBlock=" + startBlock + "&numBlocks=" + numBlocks;
+        - if(dynamicContainerId) {
+        -   return `javascript:ajaxUpdate("${pageUrl}", "${dynamicContainerId}")`
+        -}
+        - return pageUrl;
+      - }
+
+      hr.mt-3
+
+      include pagination.pug

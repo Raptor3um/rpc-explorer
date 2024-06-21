@@ -15,6 +15,7 @@ var Decimal = require("decimal.js");
 var marked = require("marked");
 
 var utils = require('./../app/utils.js');
+var pingUtils = require('./../app/pingUtils.js');
 var coins = require("./../app/coins.js");
 var config = require("./../app/config.js");
 var coreApi = require("./../app/api/coreApi.js");
@@ -22,17 +23,18 @@ var addressApi = require("./../app/api/addressApi.js");
 var Session = require("./session.js");
 
 const forceCsrf = csurf({ ignoreMethods: [] });
+const pug = require('pug');
 
-var routing = function(path, method, sessionMethod, hashNext = true) {
+var routing = function(path, method, sessionMethod, args = null, hashNext = true) {
 	if(hashNext) {
 		router[method](path, (req, res, next) => {
-			var session = new Session(req, res, next);
-			session[sessionMethod]();
+			var session = new Session(req, res, next, config);
+			session[sessionMethod].apply(session, args);
 		});
 	} else {
 		router[method](path, (req, res) => {
-			var session = new Session(req, res);
-			session[sessionMethod]();
+			var session = new Session(req, res, null, config);
+			session[sessionMethod].apply(session, args);
 		});
 	}
 }
@@ -128,9 +130,9 @@ router.get("/peers", function(req, res, next) {
 		}
 
 		if (peerIps.length > 0) {
-			utils.geoLocateIpAddresses(peerIps).then(function(results) {
+			pingUtils.geoLocateIpAddresses(peerIps).then(function(results) {
 				res.locals.peerIpSummary = results;
-				
+
 				res.render("peers");
 
 				next();
@@ -149,56 +151,56 @@ router.get("/peers", function(req, res, next) {
 	});
 });
 
-router.post("/connect", function(req, res, next) {
-	var host = req.body.host;
-	var port = req.body.port;
-	var username = req.body.username;
-	var password = req.body.password;
-
-	res.cookie('rpc-host', host);
-	res.cookie('rpc-port', port);
-	res.cookie('rpc-username', username);
-
-	req.session.host = host;
-	req.session.port = port;
-	req.session.username = username;
-
-	var newClient = new bitcoinCore({
-		host: host,
-		port: port,
-		username: username,
-		password: password,
-		timeout: 30000
-	});
-
-	debugLog("created new rpc client: " + newClient);
-
-	global.rpcClient = newClient;
-
-	req.session.userMessage = "<strong>Connected via RPC</strong>: " + username + " @ " + host + ":" + port;
-	req.session.userMessageType = "success";
-
-	res.redirect("/");
-});
-
-router.get("/disconnect", function(req, res, next) {
-	res.cookie('rpc-host', "");
-	res.cookie('rpc-port', "");
-	res.cookie('rpc-username', "");
-
-	req.session.host = "";
-	req.session.port = "";
-	req.session.username = "";
-
-	debugLog("destroyed rpc client.");
-
-	global.rpcClient = null;
-
-	req.session.userMessage = "Disconnected from node.";
-	req.session.userMessageType = "success";
-
-	res.redirect("/");
-});
+// router.post("/connect", function(req, res, next) {
+// 	var host = req.body.host;
+// 	var port = req.body.port;
+// 	var username = req.body.username;
+// 	var password = req.body.password;
+//
+// 	res.cookie('rpc-host', host);
+// 	res.cookie('rpc-port', port);
+// 	res.cookie('rpc-username', username);
+//
+// 	req.session.host = host;
+// 	req.session.port = port;
+// 	req.session.username = username;
+//
+// 	var newClient = new bitcoinCore({
+// 		host: host,
+// 		port: port,
+// 		username: username,
+// 		password: password,
+// 		timeout: 30000
+// 	});
+//
+// 	debugLog("created new rpc client: " + newClient);
+//
+// 	global.rpcClient = newClient;
+//
+// 	req.session.userMessage = "<strong>Connected via RPC</strong>: " + username + " @ " + host + ":" + port;
+// 	req.session.userMessageType = "success";
+//
+// 	res.redirect("/");
+// });
+//
+// router.get("/disconnect", function(req, res, next) {
+// 	res.cookie('rpc-host', "");
+// 	res.cookie('rpc-port', "");
+// 	res.cookie('rpc-username', "");
+//
+// 	req.session.host = "";
+// 	req.session.port = "";
+// 	req.session.username = "";
+//
+// 	debugLog("destroyed rpc client.");
+//
+// 	global.rpcClient = null;
+//
+// 	req.session.userMessage = "Disconnected from node.";
+// 	req.session.userMessageType = "success";
+//
+// 	res.redirect("/");
+// });
 
 router.get("/changeSetting", function(req, res, next) {
 	if (req.query.name) {
@@ -208,63 +210,6 @@ router.get("/changeSetting", function(req, res, next) {
 	}
 
 	res.redirect(req.headers.referer);
-});
-
-router.get("/blocks", function(req, res, next) {
-	var limit = config.site.browseBlocksPageSize;
-	var offset = 0;
-	var sort = "desc";
-
-	if (req.query.limit) {
-		limit = parseInt(req.query.limit);
-	}
-
-	if (req.query.offset) {
-		offset = parseInt(req.query.offset);
-	}
-
-	if (req.query.sort) {
-		sort = req.query.sort;
-	}
-
-	res.locals.limit = limit;
-	res.locals.offset = offset;
-	res.locals.sort = sort;
-	res.locals.paginationBaseUrl = "/blocks";
-
-	coreApi.getBlockchainInfo().then(function(getblockchaininfo) {
-		res.locals.blockCount = getblockchaininfo.blocks;
-		res.locals.blockOffset = offset;
-
-		var blockHeights = [];
-		if (sort == "desc") {
-			for (var i = (getblockchaininfo.blocks - offset); i > (getblockchaininfo.blocks - offset - limit); i--) {
-				if (i >= 0) {
-					blockHeights.push(i);
-				}
-			}
-		} else {
-			for (var i = offset; i < (offset + limit); i++) {
-				if (i >= 0) {
-					blockHeights.push(i);
-				}
-			}
-		}
-		
-		coreApi.getBlocksByHeight(blockHeights).then(function(blocks) {
-			res.locals.blocks = blocks;
-
-			res.render("blocks");
-
-			next();
-		});
-	}).catch(function(err) {
-		res.locals.userMessage = "Error: " + err;
-
-		res.render("blocks");
-
-		next();
-	});
 });
 
 router.get("/search", function(req, res, next) {
@@ -293,7 +238,7 @@ router.post("/search", function(req, res, next) {
 	req.session.query = req.body.query;
 
 	if (query.length == 64) {
-		coreApi.getRawTransaction(query).then(function(tx) {
+		coreApi.getRawTransaction({query : {txid : query}}).then(function(tx) {
 			if (tx) {
 				res.redirect("/tx/" + query);
 
@@ -406,8 +351,6 @@ router.get("/block-height/:blockHeight", function(req, res, next) {
 		coreApi.getBlockByHashWithTransactions(result.hash, limit, offset).then(function(result) {
 			res.locals.result.getblock = result.getblock;
 			res.locals.result.transactions = result.transactions;
-			res.locals.result.txInputsByTransaction = result.txInputsByTransaction;
-
 			res.render("block");
 
 			next();
@@ -443,11 +386,10 @@ router.get("/block/:blockHash", function(req, res, next) {
 	res.locals.limit = limit;
 	res.locals.offset = offset;
 	res.locals.paginationBaseUrl = "/block/" + blockHash;
-	
+
 	coreApi.getBlockByHashWithTransactions(blockHash, limit, offset).then(function(result) {
 		res.locals.result.getblock = result.getblock;
 		res.locals.result.transactions = result.transactions;
-		res.locals.result.txInputsByTransaction = result.txInputsByTransaction;
 
 		res.render("block");
 
@@ -463,9 +405,9 @@ router.get("/block/:blockHash", function(req, res, next) {
 });
 
 router.get("/tx/:transactionId", function(req, res, next) {
-	var txid = req.params.transactionId;
+	let txid = req.params.transactionId;
 
-	var output = -1;
+	let output = -1;
 	if (req.query.output) {
 		output = parseInt(req.query.output);
 	}
@@ -475,15 +417,14 @@ router.get("/tx/:transactionId", function(req, res, next) {
 
 	res.locals.result = {};
 
-	coreApi.getRawTransaction(txid).then(function(rawTxResult) {
+	coreApi.getRawTransaction({query : {txid : txid}}).then(function(rawTxResult) {
 		res.locals.result.getrawtransaction = rawTxResult;
 
-		var promises = [];
+		let promises = [];
 
 		promises.push(new Promise(function(resolve, reject) {
 			coreApi.getTxUtxos(rawTxResult).then(function(utxos) {
 				res.locals.utxos = utxos;
-				
 				resolve();
 
 			}).catch(function(err) {
@@ -497,7 +438,6 @@ router.get("/tx/:transactionId", function(req, res, next) {
 			promises.push(new Promise(function(resolve, reject) {
 				coreApi.getMempoolTxDetails(txid).then(function(mempoolDetails) {
 					res.locals.mempoolDetails = mempoolDetails;
-					
 					resolve();
 
 				}).catch(function(err) {
@@ -507,23 +447,39 @@ router.get("/tx/:transactionId", function(req, res, next) {
 				});
 			}));
 		}
-
+		rawTxResult.vout.forEach(utils.findAddressVout);
 		promises.push(new Promise(function(resolve, reject) {
-			global.rpcClient.command('getblock', rawTxResult.blockhash, function(err3, result3, resHeaders3) {
+			coreApi.getBlockByHash(rawTxResult.blockhash).then(result3 => {
 				res.locals.result.getblock = result3;
 
-				var txids = [];
-				for (var i = 0; i < rawTxResult.vin.length; i++) {
-					if (!rawTxResult.vin[i].coinbase) {
-						txids.push(rawTxResult.vin[i].txid);
+				let txidMap = {};
+				for (let i = 0; i < rawTxResult.vin.length; i++) {
+					let vin = rawTxResult.vin[i];
+					if (!vin.coinbase && !vin.address) {
+						txidMap[vin.txid] = vin;
 					}
 				}
-
-				coreApi.getRawTransactions(txids).then(function(txInputs) {
-					res.locals.result.txInputs = txInputs;
-
+				coreApi.getRawTransactions(Object.keys(txidMap)).then(function(txInputs) {
+					for(let txInput of txInputs) {
+						let vin = txidMap[txInput.txid];
+						let inputVout = txInput.vout[vin.vout];
+						utils.extractedVinVout(inputVout, vin);
+					}
 					resolve();
+				}).catch(err => {
+					res.locals.pageErrors.push(utils.logError("0q83hreuwgd", err));
+					reject(err);
 				});
+				// coreApi.getRawTransactions(txidMap).then(function(txInputs) {
+				// 	res.locals.result.txInputs = txInputs;
+				// 	resolve();
+				// }).catch(err => {
+				// 	res.locals.pageErrors.push(utils.logError("0q83hreuwgd", err));
+				// 	reject(err);
+				// });
+			}).catch(err => {
+				res.locals.pageErrors.push(utils.logError("0q83hreuwgd", err));
+				reject(err);
 			});
 		}));
 
@@ -534,309 +490,31 @@ router.get("/tx/:transactionId", function(req, res, next) {
 
 		}).catch(function(err) {
 			res.locals.pageErrors.push(utils.logError("1237y4ewssgt", err));
+			res.locals.message = "Failed to load some part of transaction with txid=" + txid + " and reload may help. error: " + err;
 
-			res.render("transaction");
+			res.render("error");
 
 			next();
 		});
 
-		
-	}).catch(function(err) {
-		res.locals.userMessage = "Failed to load transaction with txid=" + txid + ": " + err;
 
-		res.render("transaction");
+	}).catch(function(err) {
+		res.locals.message = "Failed to load transaction with txid=" + txid + ": " + err;
+
+		res.render("error");
 
 		next();
 	});
 });
 
-router.get("/address/:address", function(req, res, next) {
-	var limit = config.site.addressTxPageSize;
-	var offset = 0;
-	var sort = "desc";
-
-	
-	if (req.query.limit) {
-		limit = parseInt(req.query.limit);
-
-		// for demo sites, limit page sizes
-		if (config.demoSite && limit > config.site.addressTxPageSize) {
-			limit = config.site.addressTxPageSize;
-
-			res.locals.userMessage = "Transaction page size limited to " + config.site.addressTxPageSize + ". If this is your site, you can change or disable this limit in the site config.";
-		}
-	}
-
-	if (req.query.offset) {
-		offset = parseInt(req.query.offset);
-	}
-
-	if (req.query.sort) {
-		sort = req.query.sort;
-	}
-
-
-	var address = req.params.address;
-
-	res.locals.address = address;
-	res.locals.limit = limit;
-	res.locals.offset = offset;
-	res.locals.sort = sort;
-	res.locals.paginationBaseUrl = `/address/${address}?sort=${sort}`;
-	res.locals.transactions = [];
-	res.locals.addressApiSupport = addressApi.getCurrentAddressApiFeatureSupport();
-	
-	res.locals.result = {};
-
-	try {
-		res.locals.addressObj = bitcoinjs.address.fromBase58Check(address);
-
-	} catch (err) {
-		if (!err.toString().startsWith("Error: Non-base58 character")) {
-			res.locals.pageErrors.push(utils.logError("u3gr02gwef", err));
-		}
-
-		try {
-			res.locals.addressObj = bitcoinjs.address.fromBech32(address);
-
-		} catch (err2) {
-			res.locals.pageErrors.push(utils.logError("u02qg02yqge", err));
-		}
-	}
-
-	if (global.miningPoolsConfigs) {
-		for (var i = 0; i < global.miningPoolsConfigs.length; i++) {
-			if (global.miningPoolsConfigs[i].payout_addresses[address]) {
-				res.locals.payoutAddressForMiner = global.miningPoolsConfigs[i].payout_addresses[address];
-			}
-		}
-	}
-
-	coreApi.getAddress(address).then(function(validateaddressResult) {
-		res.locals.result.validateaddress = validateaddressResult;
-
-		var promises = [];
-		if (!res.locals.crawlerBot) {
-			var addrScripthash = hexEnc.stringify(sha256(hexEnc.parse(validateaddressResult.scriptPubKey)));
-			addrScripthash = addrScripthash.match(/.{2}/g).reverse().join("");
-
-			res.locals.electrumScripthash = addrScripthash;
-
-			promises.push(new Promise(function(resolve, reject) {
-				addressApi.getAddressDetails(address, validateaddressResult.scriptPubKey, sort, limit, offset).then(function(addressDetailsResult) {
-					var addressDetails = addressDetailsResult.addressDetails;
-
-					if (addressDetailsResult.errors) {
-						res.locals.addressDetailsErrors = addressDetailsResult.errors;
-					}
-
-					if (addressDetails) {
-						res.locals.addressDetails = addressDetails;
-
-						if (addressDetails.balanceSat == 0) {
-							// make sure zero balances pass the falsey check in the UI
-							addressDetails.balanceSat = "0";
-						}
-
-						if (addressDetails.txCount == 0) {
-							// make sure txCount=0 pass the falsey check in the UI
-							addressDetails.txCount = "0";
-						}
-
-						if (addressDetails.txids) {
-							var txids = addressDetails.txids;
-
-							// if the active addressApi gives us blockHeightsByTxid, it saves us work, so try to use it
-							var blockHeightsByTxid = {};
-							if (addressDetails.blockHeightsByTxid) {
-								blockHeightsByTxid = addressDetails.blockHeightsByTxid;
-							}
-
-							res.locals.txids = txids;
-							
-							coreApi.getRawTransactionsWithInputs(txids).then(function(rawTxResult) {
-								res.locals.transactions = rawTxResult.transactions;
-								res.locals.txInputsByTransaction = rawTxResult.txInputsByTransaction;
-
-								// for coinbase txs, we need the block height in order to calculate subsidy to display
-								var coinbaseTxs = [];
-								for (var i = 0; i < rawTxResult.transactions.length; i++) {
-									var tx = rawTxResult.transactions[i];
-
-									for (var j = 0; j < tx.vin.length; j++) {
-										if (tx.vin[j].coinbase) {
-											// addressApi sometimes has blockHeightByTxid already available, otherwise we need to query for it
-											if (!blockHeightsByTxid[tx.txid]) {
-												coinbaseTxs.push(tx);
-											}
-										}
-									}
-								}
-
-
-								var coinbaseTxBlockHashes = [];
-								var blockHashesByTxid = {};
-								coinbaseTxs.forEach(function(tx) {
-									coinbaseTxBlockHashes.push(tx.blockhash);
-									blockHashesByTxid[tx.txid] = tx.blockhash;
-								});
-
-								var blockHeightsPromises = [];
-								if (coinbaseTxs.length > 0) {
-									// we need to query some blockHeights by hash for some coinbase txs
-									blockHeightsPromises.push(new Promise(function(resolve2, reject2) {
-										coreApi.getBlocksByHash(coinbaseTxBlockHashes).then(function(blocksByHashResult) {
-											for (var txid in blockHashesByTxid) {
-												if (blockHashesByTxid.hasOwnProperty(txid)) {
-													blockHeightsByTxid[txid] = blocksByHashResult[blockHashesByTxid[txid]].height;
-												}
-											}
-
-											resolve2();
-
-										}).catch(function(err) {
-											res.locals.pageErrors.push(utils.logError("78ewrgwetg3", err));
-
-											reject2(err);
-										});
-									}));
-								}
-
-								Promise.all(blockHeightsPromises).then(function() {
-									var addrGainsByTx = {};
-									var addrLossesByTx = {};
-
-									res.locals.addrGainsByTx = addrGainsByTx;
-									res.locals.addrLossesByTx = addrLossesByTx;
-
-									var handledTxids = [];
-
-									for (var i = 0; i < rawTxResult.transactions.length; i++) {
-										var tx = rawTxResult.transactions[i];
-										var txInputs = rawTxResult.txInputsByTransaction[tx.txid];
-										
-										if (handledTxids.includes(tx.txid)) {
-											continue;
-										}
-
-										handledTxids.push(tx.txid);
-
-										for (var j = 0; j < tx.vout.length; j++) {
-											if (tx.vout[j].value > 0 && tx.vout[j].scriptPubKey && tx.vout[j].scriptPubKey.addresses && tx.vout[j].scriptPubKey.addresses.includes(address)) {
-												if (addrGainsByTx[tx.txid] == null) {
-													addrGainsByTx[tx.txid] = new Decimal(0);
-												}
-
-												addrGainsByTx[tx.txid] = addrGainsByTx[tx.txid].plus(new Decimal(tx.vout[j].value));
-											}
-										}
-
-										for (var j = 0; j < tx.vin.length; j++) {
-											var txInput = txInputs[j];
-											var vinJ = tx.vin[j];
-
-											if (txInput != null) {
-												if (txInput.vout[vinJ.vout] && txInput.vout[vinJ.vout].scriptPubKey && txInput.vout[vinJ.vout].scriptPubKey.addresses && txInput.vout[vinJ.vout].scriptPubKey.addresses.includes(address)) {
-													if (addrLossesByTx[tx.txid] == null) {
-														addrLossesByTx[tx.txid] = new Decimal(0);
-													}
-
-													addrLossesByTx[tx.txid] = addrLossesByTx[tx.txid].plus(new Decimal(txInput.vout[vinJ.vout].value));
-												}
-											}
-										}
-
-										//debugLog("tx: " + JSON.stringify(tx));
-										//debugLog("txInputs: " + JSON.stringify(txInputs));
-									}
-
-									res.locals.blockHeightsByTxid = blockHeightsByTxid;
-
-									resolve();
-
-								}).catch(function(err) {
-									res.locals.pageErrors.push(utils.logError("230wefrhg0egt3", err));
-
-									reject(err);
-								});
-
-							}).catch(function(err) {
-								res.locals.pageErrors.push(utils.logError("asdgf07uh23", err));
-
-								reject(err);
-							});
-
-						} else {
-							// no addressDetails.txids available
-							resolve();
-						}
-					} else {
-						// no addressDetails available
-						resolve();
-					}
-				}).catch(function(err) {
-					res.locals.pageErrors.push(utils.logError("23t07ug2wghefud", err));
-
-					res.locals.addressApiError = err;
-
-					reject(err);
-				});
-			}));
-
-			promises.push(new Promise(function(resolve, reject) {
-				coreApi.getBlockchainInfo().then(function(getblockchaininfo) {
-					res.locals.getblockchaininfo = getblockchaininfo;
-
-					resolve();
-
-				}).catch(function(err) {
-					res.locals.pageErrors.push(utils.logError("132r80h32rh", err));
-
-					reject(err);
-				});
-			}));
-		}
-
-		promises.push(new Promise(function(resolve, reject) {
-			qrcode.toDataURL(address, function(err, url) {
-				if (err) {
-					res.locals.pageErrors.push(utils.logError("93ygfew0ygf2gf2", err));
-				}
-
-				res.locals.addressQrCodeUrl = url;
-
-				resolve();
-			});
-		}));
-
-		Promise.all(promises.map(utils.reflectPromise)).then(function() {
-			res.render("address");
-
-			next();
-
-		}).catch(function(err) {
-			res.locals.pageErrors.push(utils.logError("32197rgh327g2", err));
-
-			res.render("address");
-
-			next();
-		});
-		
-	}).catch(function(err) {
-		res.locals.pageErrors.push(utils.logError("2108hs0gsdfe", err, {address:address}));
-
-		res.locals.userMessage = "Failed to load address " + address + " (" + err + ")";
-
-		res.render("address");
-
-		next();
-	});
-});
+routing("/blocktableview/:blockTotal", "get", "renderBlocksTableView", null, true);
+routing("/addressview/:address", "get", "renderAddressView", [coins[config.coin].assetSupported, coins[config.coin].hasassets],true);
+routing("/address/:address", "get", "renderAddressPage", [coins[config.coin].assetSupported, coins[config.coin].hasassets],true);
 
 router.get("/rpc-terminal", function(req, res, next) {
 	if (!config.demoSite && !req.authenticated) {
 		res.send("RPC Terminal / Browser require authentication. Set an authentication password via the 'BTCEXP_BASIC_AUTH_PASSWORD' environment variable (see .env-sample file for more info).");
-		
+
 		next();
 
 		return;
@@ -965,7 +643,7 @@ router.get("/rpc-browser", function(req, res, next) {
 									if (req.query.args[i]) {
 										argValues.push(JSON.parse(req.query.args[i]));
 									}
-									
+
 									break;
 
 								} else {
@@ -1024,9 +702,9 @@ router.get("/rpc-browser", function(req, res, next) {
 					next();
 				}
 			}).catch(function(err) {
-				res.locals.userMessage = "Error loading help content for method " + req.query.method + ": " + err;
+				res.locals.message = "Error loading help content for method " + req.query.method + ": " + err;
 
-				res.render("browser");
+				res.render("error");
 
 				next();
 			});
@@ -1126,7 +804,7 @@ router.get("/about", function(req, res, next) {
 });
 
 router.get("/changelog", function(req, res, next) {
-	res.locals.changelogHtml = marked(global.changelogMarkdown);
+	res.locals.changelogHtml = marked.parse(global.changelogMarkdown);
 
 	res.render("changelog");
 
@@ -1140,10 +818,10 @@ router.get("/fun", function(req, res, next) {
 	});
 
 	res.locals.historicalData = sortedList;
-	
+
 	res.render("fun");
 
 	next();
 });
-routing("/ext/summary", "get", "getNetworkSummary", false);
+routing("/ext/summary", "get", "getNetworkSummary", null, false);
 module.exports = router;

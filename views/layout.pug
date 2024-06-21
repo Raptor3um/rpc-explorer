@@ -4,26 +4,25 @@ html(lang="en")
 		meta(charset="utf-8")
 		meta(name="csrf-token", content=csrfToken)
 		meta(name="viewport", content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no")
-		
+
 		link(rel="stylesheet", href="/css/fonts.css", integrity="sha384-XOmmu8j3C2MFUXRVGg8VWYNwlhEkSNb0rW/4e7bi3F56S6PejEmBUQDGZofQyjbL")
 		link(rel="stylesheet", href="/css/highlight.min.css", integrity="sha384-zhIsEafzyQWHSoMCQ4BfT8ZlRXQyIFwAHAJn32PNdsb8n6tVysGZSLpEEIvCskw4")
-
 
 		if (session.uiTheme && session.uiTheme == "dark")
 			link(rel="stylesheet", href="/css/bootstrap-dark.css", integrity="")
 			link(rel="stylesheet", href="/css/dark-touchups.css", integrity="")
-				
+			link(rel="stylesheet", href="/css/jquery-ui-themes-1.12.1/themes/dark-hive/jquery-ui.min.css")
 		else
 			link(rel="stylesheet", href="/css/bootstrap.min.css", integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T")
+			link(rel="stylesheet", href="/css/jquery-ui-themes-1.12.1/themes/base/jquery-ui.min.css")
 
-		
 		link(rel='stylesheet', href='/css/styling.css')
 
 		link(rel="icon", type="image/png", href=("/img/logo/" + config.coin.toLowerCase() + ".png"))
 		link(rel="shortcut icon" href=("/img/logo/" +  config.coin.toLowerCase() + ".ico") type="image/x-icon")
 		block headContent
 			title Explorer
-	- utils.formatLargeNumber(10000000, 3);		
+	- utils.formatLargeNumber(10000000, 3);
 	body(class="bg-dark")
 		nav(class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top")
 			div(class="container")
@@ -32,10 +31,10 @@ html(lang="en")
 						if (coinConfig.logoUrl)
 							img(src=coinConfig.logoUrl, class="header-image", alt="logo")
 						span #{coinConfig.siteTitle}
-						
+
 				button(type="button", class="navbar-toggler navbar-toggler-right", data-toggle="collapse", data-target="#navbarNav", aria-label="collapse navigation")
 					span(class="navbar-toggler-icon")
-					
+
 				div(class="collapse navbar-collapse", id="navbarNav")
 					if (rpcClient)
 						ul(class="navbar-nav mr-auto")
@@ -46,7 +45,7 @@ html(lang="en")
 
 							if (config.siteTools)
 								li(class="nav-item dropdown")
-									a(class="nav-link dropdown-toggle", href="javascript:void(0)", role="button", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false") 
+									a(class="nav-link dropdown-toggle", href="javascript:void(0)", role="button", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false")
 										span  Tools
 									div(class="dropdown-menu shadow", aria-label="Tools Items")
 										each item in config.siteTools
@@ -58,7 +57,7 @@ html(lang="en")
 							if (config.site.header.dropdowns)
 								each dropdown, ddIndex in config.site.header.dropdowns
 									li(class="nav-item dropdown")
-										a(class="nav-link dropdown-toggle", href="javascript:void(0)", role="button", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false") 
+										a(class="nav-link dropdown-toggle", href="javascript:void(0)", role="button", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false")
 											span  #{dropdown.title}
 										div(class="dropdown-menu shadow", aria-label=(dropdown.title + " Items"))
 											each dropdownLink in dropdown.links
@@ -67,7 +66,7 @@ html(lang="en")
 														img(src=dropdownLink.imgUrl, style="width: 24px; height: 24px; margin-right: 8px;", alt=dropdownLink.name)
 													span  #{dropdownLink.name}
 
-							
+
 						form(method="post", action="/search", class="form-inline mr-3")
 							input(type="hidden", name="_csrf", value=csrfToken)
 							div(class="input-group input-group-sm")
@@ -78,8 +77,8 @@ html(lang="en")
 
 						ul(class="navbar-nav")
 							li(class="nav-item dropdown")
-								a(class="nav-link dropdown-toggle", href="javascript:void(0)", id="navbarDropdown", role="button", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false") 
-									i(class="fas fa-cog mr-1") 
+								a(class="nav-link dropdown-toggle", href="javascript:void(0)", id="navbarDropdown", role="button", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false")
+									i(class="fas fa-cog mr-1")
 								div(class="dropdown-menu dropdown-menu-right shadow", aria-labelledby="navbarDropdown")
 									if (coinConfig.currencyUnits)
 										span(class="dropdown-header") Currency Units
@@ -100,7 +99,7 @@ html(lang="en")
 										if (session.uiTheme == "dark")
 											i(class="fas fa-check")
 										span  Dark
-		
+
 		if (host && port && !homepage && config.site.header.showToolsSubheader)
 			div(id="sub-menu", class="container mb-2 pt-2 d-lg-block d-none border-top", style="")
 				ul(class="nav")
@@ -109,7 +108,7 @@ html(lang="en")
 							li(class="nav-item")
 								a(href=item.url, class="nav-link text-white px-2 text-decoration-underline")
 									span #{item.name}
-		
+
 		- var bodyBgColor = "#ffffff;";
 		if (session.uiTheme && session.uiTheme == "dark")
 			- bodyBgColor = "#0c0c0c;";
@@ -127,12 +126,12 @@ html(lang="en")
 				if (userMessage)
 					div(class="alert", class=(userMessageType ? ("alert-"  + userMessageType) : "alert-warning"), role="alert")
 						span !{userMessage}
-				
+
 				block content
 
 				div(style="margin-bottom: 30px;")
 
-				if (config.demoSite && !crawlerBot)
+				if (!crawlerBot)
 					include ./includes/donation-modal.pug
 
 		footer(class="footer border-top border-primary bg-dark pt-3 pb-1 px-3 text-white", style="border-width: 5px !important;")
@@ -142,30 +141,30 @@ html(lang="en")
 						dl
 							dt Source
 							dd
-								a(href="https://github.com/Pigeoncoin/pgn-rpc-explorer") github.com/Pigeoncoin/pgn-rpc-explorer
-								
+								a(href="https://github.com/npq7721/rpc-explorer") github.com/npq7721/rpc-explorer
+
 								if (global.sourcecodeProjectMetadata)
 									div(class="mt-2")
-										a(href="https://github.com/Pigeoncoin/pgn-rpc-explorer", class="btn btn-primary btn-sm mr-3 mb-1 text-decoration-none")
+										a(href="https://github.com/npq7721/rpc-explorer", class="btn btn-primary btn-sm mr-3 mb-1 text-decoration-none")
 											i(class="fas fa-star mr-2")
-											span(class="mr-2") Star 
+											span(class="mr-2") Star
 											span(class="badge bg-white text-dark") #{global.sourcecodeProjectMetadata.stargazers_count}
 
-										a(href="https://github.com/Pigeoncoin/pgn-rpc-explorer/fork", class="btn btn-primary btn-sm mr-3 mb-1 text-decoration-none")
+										a(href="https://github.com/npq7721/rpc-explorer/fork", class="btn btn-primary btn-sm mr-3 mb-1 text-decoration-none")
 											i(class="fas fa-code-branch mr-2")
-											span(class="mr-2") Fork 
+											span(class="mr-2") Fork
 											span(class="badge bg-white text-dark") #{global.sourcecodeProjectMetadata.forks_count}
 
 
-							
+
 							dt App Details
 							dd
 								span version: #{global.appVersion}
 								if (sourcecodeVersion)
 									br
-									span commit: 
-										a(href=("https://github.com/Pigeoncoin/pgn-rpc-explorer/commit/" + sourcecodeVersion)) #{sourcecodeVersion}
-								
+									span commit:
+										a(href=("https://github.com/npq7721/rpc-explorer/commit/" + sourcecodeVersion)) #{sourcecodeVersion}
+
 								br
 								span released: #{sourcecodeDate}
 								span(style="font-size: 0.9em;")  (
@@ -179,7 +178,7 @@ html(lang="en")
 										a(href=coinConfig.demoSiteUrl) #{coinConfig.demoSiteUrl}
 									else
 										a(href="https://btc-explorer.chaintools.io") https://btc-explorer.chaintools.io
-									
+
 									div(class="mt-2")
 										- var demoSiteCoins = ["BTC"];
 										each demoSiteCoin in demoSiteCoins
@@ -192,25 +191,51 @@ html(lang="en")
 					div(class="col-md-7 text-md-right")
 						dl
 							dd
+								p If you would like to this explorer to support your favorite coin, feel free to make request by open an <a href="https://github.com/npq7721/rpc-explorer/issues">issue</a> at my github to request coin supports.
 								button.btn.btn-primary(type="button", class="btn btn-primary", data-toggle="modal", data-target="#exampleModalCenter")
 									i(class="fas fa-heart mr-2")
 									span Support Project
-		
-		script(src="/js/jquery.min.js", integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=")
+		div(id="popup-dialog")
+		//script(src="/js/jquery.min.js", integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=")
+		script(src="/js/jquery-3.4.1.min.js", integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=")
 		script(src="/js/popper.min.js", integrity="sha384-wHAiFfRlMFy6i5SRaxvfOCifBUQy1xHdJ/yoi7FRNXMRBu5WHdZYu1hA6ZOblgut")
 		script(src="/js/bootstrap.min.js", integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM")
 		script(defer, src="/js/fontawesome.min.js", integrity="sha384-eVEQC9zshBn0rFj4+TU78eNA19HMNigMviK/PU/FFjLXqa/GKPgX58rvt5Z8PLs7")
 		script(src="/js/highlight.min.js", integrity="sha384-xLrpH5gNLD6HMLgeDH1/p4FXigQ8T9mgNm+EKtCSXL0OJ5i1bnSi57dnwFuUMM9/")
+		script(src="/js/jquery.dataTables.min.js", integrity="sha384-rgWRqC0OFPisxlUvl332tiM/qmaNxnlY46eksSZD84t+s2vZlqGeHrncwIRX7CGp")
+		script(src="/js/dataTables.bootstrap4.min.js", integrity="sha384-uiSTMvD1kcI19sAHJDVf68medP9HA2E2PzGis9Efmfsdb8p9+mvbQNgFhzii1MEX")
 		script(src="/js/utils.js")
+		script(src="/js/chartUtils.js")
+		script(src="/js/jquery-ui.min.js", integrity="sha256-VazP97ZCwtekAsvgPBSUwPFKdrwD3unUfSGVYrahUqU=")
 		script.
+			$("#popup-dialog").dialog({
+				autoOpen: false,
+				modal : true,
+				width : 700,
+				height : 600,
+				maxWidth : 1000,
+				maxHeight : 1000
+			});
 			$(document).ready(function() {
 				$('[data-toggle="tooltip"]').tooltip();
 				$('[data-toggle="popover"]').popover({html:true, container:"body"});
+				$(document).on('click', '.ui-widget-overlay', function () {
+				   $("#popup-dialog").dialog("close");
+				});
 				updateStats();
+				loadLazyContainers();
+				updateSupply();
+				updateMarketCap();
 			});
 
 			hljs.initHighlightingOnLoad();
-
+		if (coinConfig.masternodeSupported)
+			script.
+				$(document).ready(function() {
+					updateMasternodeCount();
+					updateMasternodeReachableCount();
+					updateLockByMN();
+				});
 		if (config.credentials.sentryUrl && config.credentials.sentryUrl.length > 0)
 			script(src="/js/sentry.min.js", integrity="sha384-da/Bo2Ah6Uw3mlhl6VINMblg2SyGbSnULKrukse3P5D9PTJi4np9HoKvR19D7zOL", crossorigin="anonymous")
 			script.
@@ -225,5 +250,5 @@ html(lang="en")
 
 				gtag('config', '#{config.credentials.googleAnalyticsTrackingId}');
 
-		
+
 		block endOfBody

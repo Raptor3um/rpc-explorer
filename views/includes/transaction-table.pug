@@ -1,0 +1,37 @@
+div(class="card mb-4 shadow-sm")
+    div(class="card-header")
+        div(class="row")
+            div(class="col")
+                h2(class="h6 mb-0") Pending Transactions
+                    if (getblockchaininfo.initialblockdownload)
+                        small  (#{(getblockchaininfo.headers - getblockchaininfo.blocks).toLocaleString()} behind)
+
+            div(class="col")
+                span(style="float: right;")
+                    a(href="/unconfirmed-tx")
+                        span  Browse Transactions &raquo;
+
+    div(class="card-body")
+        div(class="table-responsive")
+            table(class="table table-striped mb-0")
+                thead
+                    tr
+                        th(class="data-header") txid
+                        th(class="data-header") Created On (utc)
+                        th(class="data-header text-right") Age
+                        th(class="data-header text-right") Fee
+                        th(class="data-header text-right") Size (bytes)
+                tbody
+                    each tx, txIndex in pendingTransactions
+                        if (tx)
+                            tr
+                                td(class="data-cell monospace")
+                                    a(href=("/tx/" + tx.txid)) #{tx.txid}
+                                td(class="data-cell monospace") #{moment.utc(new Date(parseInt(block.time) * 1000)).format("Y-MM-DD HH:mm:ss")}
+        
+                                - var timeAgo = moment.duration(moment.utc(new Date()).diff(moment.utc(new Date(parseInt(block.time) * 1000))));
+                                td(class="data-cell monospace text-right") #{timeAgo.format()}
+                                td(class="data-cell monospace text-right")
+                                    - var currencyValue = new Decimal(block.totalFees).dividedBy(block.tx.length);
+                                    include ./value-display.pug
+                                td(class="data-cell monospace text-right") #{block.size.toLocaleString()}

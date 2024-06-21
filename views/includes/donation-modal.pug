@@ -6,8 +6,7 @@
 				button.close(type='button' data-dismiss='modal' aria-label='Close')
 					span(aria-hidden='true') &times;
 			.modal-body
-				p.lead.text-primary I work on this project because I value it myself and want to give back to the BTC community. If it's valuable to you too, please consider supporting my work with a donation. Thanks!
-
+				p.lead.text-primary I work on this project because I value it myself and want to give back to the crypto community. If it's valuable to you too, please consider supporting my work with a donation. Thanks!
 				if (config.donations.btcpayserver)
 					h6
 						span(class="mr-2") Donate (via BTCPay)
@@ -51,14 +50,10 @@
 								if (coinConfig.ticker == coin)
 									span #{config.donations.addresses[coin].address}
 								else
-									span #{coin}: 
+									span #{coin}:
 									a(href=(config.donations.addresses.sites[coin] + "/address/" + config.donations.addresses[coin].address), class="text-wrap") #{config.donations.addresses[coin].address}
-
-					each coin, index in config.donations.addresses.coins
-						div(style="display: inline-block; max-width: 150px;", class="text-center mb-3 word-wrap monospace", class=(index > 0 ? "ml-md-3" : false))
-							img(src=donationAddressQrCodeUrls[coin], alt=config.donations.addresses[coin].address, style="border: solid 1px #ccc;")
+									div(style="display: inline-block; max-width: 150px; padding-left:20px", class="text-center mb-3 word-wrap monospace", class=(index > 0 ? "ml-md-3" : false))
+										img(src=donationAddressQrCodeUrls[coin], alt=config.donations.addresses[coin].address, style="border: solid 1px #ccc;")
 
 			.modal-footer
 				button.btn.btn-secondary(type='button' data-dismiss='modal') Close
-
-

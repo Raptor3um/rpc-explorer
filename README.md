@@ -30,13 +30,14 @@ See [CHANGELOG.md](/CHANGELOG.md).
 
 The below instructions are geared toward BTC, but can be adapted easily to other coins.
 
-## Prerequisites: 
+## Prerequisites:
 
 These steps are for bitcoin but other supported bitcoins base coin should have similar setup
 
 1. Install and run a full, archiving node - [instructions](https://bitcoin.org/en/full-node). Ensure that your bitcoin node has full transaction indexing enabled (`txindex=1`) and the RPC server enabled (`server=1`).
 2. Synchronize your node with the Bitcoin network.
 3. "Recent" version of Node.js (8+ recommended).
+4. Latest MongoDB to use to store addresses balances and exchange api information (future feature).
 
 ## Instructions
 
@@ -51,12 +52,24 @@ Open [http://127.0.0.1:3002/](http://127.0.0.1:3002/) to view the explorer.
 You may set configuration options in a `.env` file or using CLI args.
 See [configuration](#configuration) for details.
 
+## MongoDB setup
+Enter MongoDB cli:
+
+    $ mongo
+
+Create databse:
+
+    > use explorerdb
+
+Create user with read/write access:
+    > db.createUser( { user: "rpcexplorer", pwd: "3xp!0reR", roles: [ "readWrite" ] } )
+    
 ### Configuration
 
 Configuration options may be passed as environment variables
 or by creating an env file at `~/.config/btc-rpc-explorer.env`
 or at `.env` in the working directory.
-See [.env-sample](.env-sample) for a list of the options and details for formatting `.env`.
+See [example](examples/rtm/btc-rpc-explorer.env) for a list of the options and details for formatting `.env`.
 
 You may also pass options as CLI arguments, for example:
 
@@ -68,16 +81,17 @@ See `rpc-explorer --help` for the full list of CLI options.
 
 ## Run via Docker
 
-1. `docker build -t rpc-explorer .`
-2. `docker run -p 3002:3002 -it rpc-explorer`
+```
+cp seed raptoreumd/
+docker-compose up --build --force-recreate
 
 # Support
 
-* [3Jym9QJLXQyjSSGKS1LCD9LCroPqCGo3Lq](bitcoin:3Jym9QJLXQyjSSGKS1LCD9LCroPqCGo3Lq)
-
+* BTC: [3Jym9QJLXQyjSSGKS1LCD9LCroPqCGo3Lq](bitcoin:3Jym9QJLXQyjSSGKS1LCD9LCroPqCGo3Lq)
+* LTC: [LeBistdbcpTDbztr4GU9P29WZzGqJVmnjT](litecoin:LeBistdbcpTDbztr4GU9P29WZzGqJVmnjT)
+* RAVEN: [RUExhCD48z1jRCZtMJTyCXQx83N9svvavC](litecoin:RUExhCD48z1jRCZtMJTyCXQx83N9svvavC)
 
 [npm-ver-img]: https://img.shields.io/npm/v/btc-rpc-explorer.svg?style=flat
 [npm-ver-url]: https://www.npmjs.com/package/btc-rpc-explorer
 [npm-dl-img]: http://img.shields.io/npm/dm/btc-rpc-explorer.svg?style=flat
 [npm-dl-url]: https://npmcharts.com/compare/btc-rpc-explorer?minimal=true
-

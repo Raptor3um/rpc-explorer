@@ -1,0 +1,12 @@
+if(difficultyData)
+  div(class=networkSummaryColumnClass)
+    div(class="float-left", style="height: 40px; width: 40px; font-size: 12px;")
+      span
+        i(class="fas fa-dumbbell fa-2x mr-2", style="margin-top: 6px;")
+    span(class="font-weight-bold") #{difficultyData.name}
+
+    p(class="lead")
+      span.mr-2.border-dotted(data-toggle="tooltip", title=parseFloat(difficultyData.diff).toLocaleString())
+        span(id=difficultyData.name+"Num") #{difficultyData.diffCal[0]}
+        span  x 10
+        sup(id=difficultyData.name+"Exp") #{difficultyData.diffCal[1].exponent ? difficultyData.diffCal[1].exponent : 0}

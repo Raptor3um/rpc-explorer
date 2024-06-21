@@ -61,7 +61,7 @@ var Pigeoncoin = new CoinBase("Pigeoncoin", "PGN", "pigeoncoin");
 Pigeoncoin.addProperties({
 	logoUrl:"/img/logo/pgn.svg",
 	siteTitle:"Pigeoncoin Explorer",
-	siteDescriptionHtml:"<b>PGN Explorer</b> is <a href='https://github.com/pigeoncoin/pgn-rpc-explorer). If you run your own [Pigeoncoin Full Node](https://github.com/Pigeoncoin/pigeoncoin/releases), **PGN Explorer** can easily run alongside it, communicating via RPC calls. See the project [ReadMe](https://github.com/pigeoncoin/pgn-rpc-explorer) for a list of features and instructions for running.",
+	siteDescriptionHtml:"<b>PGN Explorer</b> is <a href='https://github.com/npq7721/rpc-explorer). If you run your own [Pigeoncoin Full Node](https://github.com/Pigeoncoin/pigeoncoin/releases), **PGN Explorer** can easily run alongside it, communicating via RPC calls. See the project [ReadMe](https://github.com/npq7721/rpc-explorer) for a list of features and instructions for running.",
 	nodeTitle:"Pigeoncoin Full Node",
 	nodeUrl:"https://github.com/Pigeoncoin/pigeoncoin/releases",
 	demoSiteUrl: "https://btc.chaintools.io",
@@ -130,9 +130,9 @@ Pigeoncoin.addProperties({
 			alertBodyHtml: "This transaction doesn't really exist! ",
 			referenceUrl: "https://github.com/bitcoin/bitcoin/issues/3303"
 		}
-		
+
 	],
-	
+
 	relatedSites : [
 		{name: "Official Website", url:"https://pigeoncoin.org/", imgUrl:"/img/logo/pgn.svg"},
 		{name: "Discord", url:"https://discord.gg/SZcf63h", imgUrl:"/img/logo/discord.svg"},

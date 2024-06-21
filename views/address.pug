@@ -13,7 +13,7 @@ block content
 			h1.h3 Address
 				br
 				small(class="monospace") #{address}
-			
+
 			hr
 
 			if (payoutAddressForMiner)
@@ -24,13 +24,13 @@ block content
 					h4(class="alert-heading h6 font-weight-bold") #{coinConfig.name} Fun
 
 					p
-						span This looks like a miner payout address for  
+						span This looks like a miner payout address for
 						span(class="font-weight-bold") #{payoutAddressForMiner.name}
 						if (coinConfig.miningPoolsConfigUrls.length > 1)
-							span  (see the configurations: 
+							span  (see the configurations:
 							each item, index in coinConfig.miningPoolsConfigUrls
 								if (index > 0)
-									span , 
+									span ,
 								a(href=item) config ##{index + 1}
 							span )
 						else
@@ -61,7 +61,7 @@ block content
 							span !{saInfo.alertBodyHtml}
 
 							if (saInfo.referenceUrl && saInfo.referenceUrl.trim().length > 0 && saInfo.alertBodyHtml.indexOf(saInfo.referenceUrl) == -1)
-								span  
+								span
 									a(href=saInfo.referenceUrl) Read more
 
 					else
@@ -69,14 +69,14 @@ block content
 							span #{saInfo.summary}
 
 							if (saInfo.referenceUrl && saInfo.referenceUrl.trim().length > 0)
-								span  
+								span
 									a(href=saInfo.referenceUrl) Read more
 
 
 			if (false)
 				pre
 					code.json.bg-light #{JSON.stringify(addressObj, null, 4)}
-			
+
 			ul(class='nav nav-tabs mb-3')
 				li(class="nav-item")
 					a(data-toggle="tab", href="#tab-details", class="nav-link active", role="tab") Details
@@ -114,12 +114,12 @@ block content
 											div(class="summary-split-table-label") Script Public Key
 											div(class="summary-split-table-content monospace") #{result.validateaddress.scriptPubKey}
 
-									if (addressObj.hasOwnProperty("version"))
+									if (Object.hasOwn(addressObj, "version"))
 										div(class="row")
 											div(class="summary-split-table-label") Version
 											div(class="summary-split-table-content monospace") #{addressObj.version}
 
-									if (result.validateaddress.hasOwnProperty("witness_version"))
+									if (Object.hasOwn(result.validateaddress, "witness_version"))
 										div(class="row")
 											div(class="summary-split-table-label") Witness Version
 											div(class="summary-split-table-content monospace") #{result.validateaddress.witness_version}
@@ -143,7 +143,7 @@ block content
 												span #{moment.utc(new Date(firstSeenTransaction.time * 1000)).format("Y-MM-DD HH:mm:ss")} utc
 												- var timeAgoTime = firstSeenTransaction.time;
 												include includes/time-ago.pug
-												
+
 												if (false)
 													pre
 														code.json.bg-light #{JSON.stringify(firstSeenTransaction)}
@@ -158,7 +158,7 @@ block content
 													each item in balance.conflictedResults
 														- var currencyValue = item.confirmed / coinConfig.baseCurrencyUnit.multiplier;
 														include includes/value-display.pug
-														
+
 
 										else
 											div(class="row")
@@ -173,13 +173,20 @@ block content
 													div(class="summary-split-table-content monospace")
 														- var currencyValue = balance.unconfirmed / coinConfig.baseCurrencyUnit.multiplier;
 														include includes/value-display.pug
-
 									if (addressDetails && addressDetails.balanceSat)
 										div(class="row")
 											div(class="summary-split-table-label") Balance
 											div(class="summary-split-table-content monospace")
 												- var currencyValue = new Decimal(addressDetails.balanceSat).dividedBy(coinConfig.baseCurrencyUnit.multiplier);
 												include includes/value-display.pug
+									if (addressDetails && addressDetails.assets)
+										each bal, assetName in addressDetails.assets
+											if(bal)
+												div(class="row")
+													div(class="summary-split-table-label") #{assetName} Balance
+													div(class="summary-split-table-content monospace")
+														- var value = new Decimal(bal).dividedBy(coinConfig.baseCurrencyUnit.multiplier);
+														span #{value}
 
 									if (addressDetails && addressDetails.txCount)
 										div(class="row")
@@ -210,6 +217,15 @@ block content
 												else
 													i(class="fas fa-times text-warning")
 
+									div(class="row input-group input-group-sm")
+										div(class="summary-split-table-label") Start Block
+										div(class="summary-split-table-content monospace")
+											input(id="startBlock", type="text", class="form-control form-control-sm", name="startBlock", placeholder="start block height", value=`${startBlock}`, onkeyup=`searchTransactions(event, "${paginationBaseUrl}", "trans-history", "startBlock", "numBlocks")`)
+										div(class="summary-split-table-label") For # Blocks
+										div(class="summary-split-table-content monospace")
+											input(id="numBlocks" type="text", class="form-control form-control-sm", name="numBlocks", placeholder="for number of blocks", value=`${numBlocks}`, onkeyup=`searchTransactions(event, "${paginationBaseUrl}", "trans-history", "startBlock", "numBlocks")`)
+
+
 					if (false)
 						div(class="card mb-3 shadow-sm")
 							div(class="card-header")
@@ -235,164 +251,30 @@ block content
 															i(class="fas fa-check text-success")
 														else
 															i(class="fas fa-times text-warning")
-
-					div(class="card mb-3 shadow-sm")
-						div(class="card-header clearfix")
-							div(class="float-left")
-								span(class="h6")
-									if (addressDetails && addressDetails.txCount)
-										if (addressDetails.txCount == 1)
-											span 1 Transaction
-										else
-											span #{addressDetails.txCount.toLocaleString()} Transactions
-									else
-										span Transactions
-
-									if (config.addressApi)
-										if (config.addressApi == "electrumx")
-											small.text-muted.border-dotted.ml-2(title=`The list of transaction IDs for this address was queried from ElectrumX (using the configured server(s))` data-toggle="tooltip") Trust Note
-										else
-											small.text-muted.border-dotted.ml-2(title=`The list of transaction IDs for this address was queried from ${config.addressApi}` data-toggle="tooltip") Trust Note
-										
-
-							if (!crawlerBot && txids && txids.length > 1 && addressApiSupport.sortDesc && addressApiSupport.sortAsc)
-								div(class="float-right")
-									a(href="#", class="pull-right dropdown-toggle", data-toggle="dropdown", aria-haspopup="true", aria-expanded="false")
-										if (sort == "desc")
-											span Newest First
-										else
-											span Oldest First
-
-									div(class="dropdown-menu dropdown-menu-right")
-										a(href=("/address/" + address), class="dropdown-item")
-											if (sort == "desc")
-												i(class="fa fa-check") 
-											span  Newest First
-										a(href=("/address/" + address + "?sort=asc"), class="dropdown-item")
-											if (sort != "desc")
-												i(class="fa fa-check") 
-											span  Oldest First
-
-							else if (txids && txids.length > 1 && addressApiSupport.sortDesc && !addressApiSupport.sortAsc)
-								div.float-right
-									span.text-muted Newest First
-
-						div(class="card-body")
-							if (conflictedTxidResults)
-								div(class="alert alert-warning", style="padding-bottom: 0;")
-									div(class="float-left", style="width: 55px; height: 50px; font-size: 18px;")
-										i(class="fas fa-exclamation-triangle fa-2x", style="margin-top: 10px;")
-									h4(class="alert-heading h6 font-weight-bold") Trust Warning
-									p
-										span The transaction history for this address was requested from mulitple ElectrumX servers and the results did not match. The results below were obtained only from 
-										span(class="font-weight-bold") #{electrumHistory.server}
-
-
-							if (true)
-								if (addressApiError && addressApiError.error && addressApiError.error.code && addressApiError.error.code == -32600)
-									span Failed to retrieve transaction history from ElectrumX. See 
-									a(href="https://github.com/janoside/btc-rpc-explorer/issues/67") Issue #67
-									span  for more information.
-
-
-								else if (addressApiError && addressApiError.userText)
-									div.text-danger Error: #{addressApiError.userText}
-
-								else if (addressDetailsErrors && addressDetailsErrors.length > 0)
-									each err in addressDetailsErrors
-										if (err.e && err.e.error && err.e.error.message == "history too large")
-											span Failed to retrieve transaction history from ElectrumX. See 
-											a(href="https://github.com/janoside/btc-rpc-explorer/issues/67") Issue #67
-											span  for more information.
-
-										else if (err == "No address API configured")
-											span No address API is configured. See 
-											a(href="https://github.com/janoside/btc-rpc-explorer/blob/master/.env-sample") the example configuration file
-											span  for help setting up an address API if desired.
-
-								else if (transactions.length == 0)
-									span No transactions found
-
-								each tx, txIndex in transactions
-									//pre
-									//	code.json.bg-light #{JSON.stringify(tx, null, 4)}
-									div(class=("xcard bg-light rounded shadow-sm " + ((txIndex < (transactions.length - 1) || txids.length > limit) ? "mb-4" : "")))
-										div(class="card-header monospace clearfix")
-											div(class="float-left", style="margin-right: 0px;")
-												if (sort == "desc")
-													span ##{(addressDetails.txCount - offset - txIndex).toLocaleString()}
-												else
-													span ##{(offset + txIndex + 1).toLocaleString()}
-												span  &ndash;
-
-											div(class="row")
-												div(class="col-md-6")
-													if (tx && tx.txid)
-														a(href=("/tx/" + tx.txid)) #{tx.txid}
-
-														if (global.specialTransactions && global.specialTransactions[tx.txid])
-															span  
-															a(data-toggle="tooltip", title=(coinConfig.name + " Fun! See transaction for details"))
-																i(class="fas fa-certificate text-primary")
-
-												div(class="col-md-6")
-													div(class="text-md-right")
-														if (tx.time)
-															span #{moment.utc(new Date(tx["time"] * 1000)).format("Y-MM-DD HH:mm:ss")} utc
-															- var timeAgoTime = tx.time;
-															include includes/time-ago.pug
-
-														else
-															span(class="text-danger") Unconfirmed
-
-												div(class="col")
-													if (addrGainsByTx[tx.txid])
-														- var currencyValue = addrGainsByTx[tx.txid];
-														span(class="text-success") +
-															include includes/value-display.pug
-
-														if (addrLossesByTx[tx.txid])
-															span  / 
-
-													if (addrLossesByTx[tx.txid])
-														- var currencyValue = addrLossesByTx[tx.txid];
-														span(class="text-danger") -
-															include includes/value-display.pug
-													
-										div(class="card-body")
-											if (true)
-												- var txInputs = txInputsByTransaction[tx.txid];
-												- var blockHeight = blockHeightsByTxid[tx.txid];
-												- var txIOHighlightAddress = address;
-
-												include includes/transaction-io-details.pug
-
-							else
-								p Since this explorer is database-free, it doesn't natively support address transaction history. However, you can configure it to communicate with one or more ElectrumX servers to build and display this data. In doing so, you should be aware that you'll be trusting those ElectrumX servers. If you configure multiple servers the results obtained from each will be cross-referenced against the others. Communicating with ElectrumX servers will also impact your privacy since the servers will know what addresses you're interested in. If these tradeoffs are acceptable, you can see a list of public ElectrumX servers here: 
-								a(href="https://uasf.saltylemon.org/electrum") https://uasf.saltylemon.org/electrum
-							
-							if (false)
-								pre
-									code.json.bg-light #{JSON.stringify(transactions, null, 4)}
-
-							if (!crawlerBot && addressDetails && addressDetails.txCount > limit)
-								- var txCount = addressDetails.txCount;
-								- var pageNumber = offset / limit + 1;
-								- var pageCount = Math.floor(txCount / limit);
-								- if (pageCount * limit < txCount) {
-									- pageCount++;
-								- }
-								- var paginationUrlFunction = function(x) {
-									- return paginationBaseUrl + "&limit=" + limit + "&offset=" + ((x - 1) * limit);
-								- }
-
-								hr.mt-3
-
-								include includes/pagination.pug
-
-							
-				
-
+					- var hasAsset = addressDetails && addressDetails.assets && Object.keys(addressDetails.assets).length > 0;
+					if (hasAsset)
+						ul(class='nav nav-tabs mb-3')
+							li(class="nav-item")
+								a(data-toggle="tab", href=`#tab-${coinConfig.ticker}`, class="nav-link active", role="tab", onclick=`ajaxUpdate("/addressview/${address}?assetName=${coinConfig.ticker}", "tab-${coinConfig.ticker}")`) #{coinConfig.ticker}
+							each bal, assetName in addressDetails.assets
+								if(assetName !== coinConfig.ticker)
+									- var hrefTab = `#tab-${assetName}`
+									li(class="nav-item")
+										a(data-toggle="tab", href=hrefTab, class="nav-link", role="tab", onclick=`ajaxUpdate("/addressview/${address}?assetName=${assetName}&startBlock=${startBlock}&numBlocks=${numBlocks}", "tab-${assetName}")`) #{assetName}
+					if (hasAsset)
+						div(class="tab-content")
+							div(id=`tab-${coinConfig.ticker}`, class="tab-pane active", role="tabpanel")
+								div(class="spinner-border lazyload", loadurl=`${paginationBaseUrl}&startBlock=${startBlock}&numBlocks=${numBlocks}`, role="status")
+									span(class="sr-only") Loading...
+							each bal, assetName in addressDetails.assets
+								if(assetName !== coinConfig.ticker)
+									div(id=`tab-${assetName}`, class="tab-pane", role="tabpanel")
+										div(class="spinner-border" role="status")
+											span(class="sr-only") Loading...
+					else
+						div(id="trans-history" class="card mb-3 shadow-sm")
+							div(class="spinner-border lazyload", loadurl=`${paginationBaseUrl}&startBlock=${startBlock}&numBlocks=${numBlocks}`, role="status")
+								span(class="sr-only") Loading...
 				div(id="tab-json", class="tab-pane", role="tabpanel")
 					div(class="highlight")
 						h4 validateaddress
@@ -403,5 +285,3 @@ block content
 							h4 addressDetails
 							pre
 								code.json.bg-light #{JSON.stringify(addressDetails, null, 4)}
-
-		

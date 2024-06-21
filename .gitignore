@@ -57,3 +57,8 @@ typings/
 # dotenv environment variables file
 .env
 
+.mongodb
+raptoreumd/.raptoreumcore
+/.idea/
+/package-lock.json
+/.env-testnet

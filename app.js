@@ -31,9 +31,12 @@ var csurf = require("csurf");
 var config = require("./app/config.js");
 var simpleGit = require('simple-git');
 var utils = require("./app/utils.js");
+var pingUtils = require("./app/pingUtils.js");
+
 var moment = require("moment");
 var Decimal = require('decimal.js');
 var bitcoinCore = require("bitcoin-core");
+//var BTCEventListener = require("./app/api/btcEventListeners.js");
 var pug = require("pug");
 var momentDurationFormat = require("moment-duration-format");
 var coreApi = require("./app/api/coreApi.js");
@@ -44,9 +47,10 @@ var addressApi = require("./app/api/addressApi.js");
 var electrumAddressApi = require("./app/api/electrumAddressApi.js");
 var coreApi = require("./app/api/coreApi.js");
 var auth = require('./app/auth.js');
-
 var package_json = require('./package.json');
 var Restful = require('./routes/restfulRouter.js');
+var translations = require("./translations.js");
+var BlockchainSync = require("./app/api/sync.js")
 global.appVersion = package_json.version;
 
 var crawlerBotUserAgentStrings = [ "Googlebot", "Bingbot", "Slurp", "DuckDuckBot", "Baiduspider", "YandexBot", "Sogou", "Exabot", "facebot", "ia_archiver" ];
@@ -59,8 +63,10 @@ if(process.env.BTCEXP_HTTPS) {
    var helmet = require("helmet");
    app.use(helmet());
 }
-
-
+// app.configure(() => {
+// 	app.use(translations.init);
+// });
+app.use(translations.init);
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 
@@ -95,6 +101,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 process.on("unhandledRejection", (reason, p) => {
 	debugLog("Unhandled Rejection at: Promise", p, "reason:", reason, "stack:", (reason != null ? reason.stack : "null"));
 });
+process.on('uncaughtException', (err) => {
+	debugLog("Unhandled Exception: ", err);
+
+	// Handle the error safely
+	console.log(err)
+})
 
 function loadMiningPoolConfigs() {
 	global.miningPoolsConfigs = [];
@@ -119,7 +131,7 @@ function loadMiningPoolConfigs() {
 
 	for (var i = 0; i < global.miningPoolsConfigs.length; i++) {
 		for (var x in global.miningPoolsConfigs[i].payout_addresses) {
-			if (global.miningPoolsConfigs[i].payout_addresses.hasOwnProperty(x)) {
+			if (Object.hasOwn(global.miningPoolsConfigs[i].payout_addresses, x)) {
 				global.specialAddresses[x] = {type:"minerPayout", minerInfo:global.miningPoolsConfigs[i].payout_addresses[x]};
 			}
 		}
@@ -204,16 +216,35 @@ app.continueStartup = function() {
 	};
 
 	global.rpcClient = new bitcoinCore(rpcClientProperties);
-
+	global.rpcClient.display_host = rpcCred.display_host;
 	var rpcClientNoTimeoutProperties = {
 		host: rpcCred.host,
 		port: rpcCred.port,
 		username: rpcCred.username,
 		password: rpcCred.password,
-		timeout: 0
+		timeout: 20000
 	};
 
 	global.rpcClientNoTimeout = new bitcoinCore(rpcClientNoTimeoutProperties);
+	// var btcEventListener = new BTCEventListener({
+	// 	ip : rpcCred.host,
+	// 	zmq_port : rpcCred.zmq_port,
+	// 	network : coins.networks[global.coinConfig.ticker],
+	// 	masternodeSupported : global.coinConfig.masternodeSupported
+	// });
+	// btcEventListener.listen();
+
+	// global.blockchainSync = new BlockchainSync(mongoDBConfig);
+	// global.blockchainSync.syncAddressBalance().then(result => {
+	// 	console.log("addresss balance ", result);
+	// }).catch(err => {
+	// 	console.log(err);
+	// 	utils.logError("32ugegdfsde", err);
+	//});
+
+	if(global.coinConfig.masternodeSupported) {
+		pingUtils.scheduleCheckIps();
+	}
 
 	coreApi.getNetworkInfo().then(function(getnetworkinfo) {
 		debugLog(`Connected via RPC to node. Basic info: version=${getnetworkinfo.version}, subversion=${getnetworkinfo.subversion}, protocolversion=${getnetworkinfo.protocolversion}, services=${getnetworkinfo.localservices}`);
@@ -268,7 +299,7 @@ app.continueStartup = function() {
 			if (config.electrumXServers && config.electrumXServers.length > 0) {
 				electrumAddressApi.connectToServers().then(function() {
 					global.electrumAddressApi = electrumAddressApi;
-					
+
 				}).catch(function(err) {
 					utils.logError("31207ugf4e0fed", err, {electrumXServers:config.electrumXServers});
 				});
@@ -324,7 +355,7 @@ app.use(function(req, res, next) {
 
 	res.locals.config = global.config;
 	res.locals.coinConfig = global.coinConfig;
-	
+
 	res.locals.host = req.session.host;
 	res.locals.port = req.session.port;
 
@@ -356,7 +387,7 @@ app.use(function(req, res, next) {
 		} else {
 			req.session.uiTheme = "dark";
 		}
-	} 
+	}
 	// homepage banner
 	if (!req.session.hideHomepageBanner) {
 		var cookieValue = req.cookies['user-setting-hideHomepageBanner'];
@@ -380,10 +411,10 @@ app.use(function(req, res, next) {
 
 	if (req.session.userMessage) {
 		res.locals.userMessage = req.session.userMessage;
-		
+
 		if (req.session.userMessageType) {
 			res.locals.userMessageType = req.session.userMessageType;
-			
+
 		} else {
 			res.locals.userMessageType = "warning";
 		}
@@ -411,12 +442,12 @@ app.use(csurf(), (req, res, next) => {
 
 app.use('/', baseActionsRouter);
 if(coins[config.coin].api) {
-	var rateLimit = require("express-rate-limit");
-	var apiProperties = coins[config.coin].api();
-	var limiter = rateLimit(apiProperties.limit);
-	var apiRounter = express.Router();
+	let rateLimit = require("express-rate-limit");
+	let apiProperties = coins[config.coin].api();
+	let limiter = rateLimit(apiProperties.limit);
+	let apiRounter = express.Router();
 	app.use(apiProperties.base_uri, limiter);
-	var restfulAPI = new Restful(apiRounter, apiProperties);
+	let restfulAPI = new Restful(apiRounter, apiProperties);
 	app.use(apiProperties.base_uri, apiRounter);
 }
 

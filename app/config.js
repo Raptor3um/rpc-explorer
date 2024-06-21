@@ -11,9 +11,9 @@ var rpcCred = credentials.rpc;
 
 if (rpcCred.cookie && !rpcCred.username && !rpcCred.password && fs.existsSync(rpcCred.cookie)) {
 	console.log(`Loading RPC cookie file: ${rpcCred.cookie}`);
-	
+
 	[ rpcCred.username, rpcCred.password ] = fs.readFileSync(rpcCred.cookie).toString().split(':', 2);
-	
+
 	if (!rpcCred.password) {
 		throw new Error(`Cookie file ${rpcCred.cookie} in unexpected format`);
 	}
@@ -29,7 +29,7 @@ var electrumXServerUriStrings = (process.env.BTCEXP_ELECTRUMX_SERVERS || "").spl
 var electrumXServers = [];
 for (var i = 0; i < electrumXServerUriStrings.length; i++) {
 	var uri = url.parse(electrumXServerUriStrings[i]);
-	
+
 	electrumXServers.push({protocol:uri.protocol.substring(0, uri.protocol.length - 1), host:uri.hostname, port:parseInt(uri.port)});
 }
 
@@ -54,7 +54,7 @@ module.exports = {
 	demoSite: (process.env.BTCEXP_DEMO.toLowerCase() == "true"),
 	queryExchangeRates: (process.env.BTCEXP_NO_RATES.toLowerCase() != "true"),
 	noInmemoryRpcCache: (process.env.BTCEXP_NO_INMEMORY_RPC_CACHE.toLowerCase() == "true"),
-	
+
 	rpcConcurrency: (process.env.BTCEXP_RPC_CONCURRENCY || 10),
 
 	rpcBlacklist:
@@ -172,21 +172,25 @@ module.exports = {
 		{name:"RPC Browser", url:"/rpc-browser", desc:"Browse the RPC functionality of this node. See docs and execute commands.", fontawesome:"fas fa-book" , enabled : (process.env.BTCEXP_BASIC_AUTH_PASSWORD !== undefined)},
 		{name:"RPC Terminal", url:"/rpc-terminal", desc:"Directly execute RPCs against this node.", fontawesome:"fas fa-terminal", enabled : (process.env.BTCEXP_BASIC_AUTH_PASSWORD !== undefined)},
 		{name: "APIs", url:"/api", desc:"Restful APIs service by this explorer", fontawesome:"fas fa-code", enabled : true},
-		
+
 		{name:(coins[currentCoin].name + " Fun"), url:"/fun", desc:"See fun/interesting historical blockchain data.", fontawesome:"fas fa-certificate", enabled : true}
 	],
 
 	donations:{
 		addresses:{
-			coins:["BTC"],
-			sites:{"BTC":"https://btc.chaintools.io"},
+			coins:["BTC", "LTC"],
+			sites:{
+				"BTC":"https://btc.chaintools.io",
+				"LTC":"https://btc.chaintools.io"
+			},
 
-			"BTC":{address:"3NPGpNyLLmVKCEcuipBs7G4KpQJoJXjDGe"}
-		},
-		btcpayserver:{
+			"BTC":{address:"3Jym9QJLXQyjSSGKS1LCD9LCroPqCGo3Lq"},
+			"LTC":{address:"LeBistdbcpTDbztr4GU9P29WZzGqJVmnjT"}
+		}
+		/*btcpayserver:{
 			host:"https://btcpay.chaintools.io",
 			storeId:"DUUExHMvKNAFukrJZHCShMhwZvfPq87QnkUhvE6h5kh2",
-			notifyEmail:"chaintools.io@gmail.com"
-		}
+			notifyEmail:"tri282@gmail.com"
+		}*/
 	}
 };

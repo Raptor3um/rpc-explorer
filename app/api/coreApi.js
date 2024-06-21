@@ -1,77 +1,24 @@
-var debug = require("debug");
+const debug = require("debug");
 
-var debugLog = debug("btcexp:core");
+const debugLog = debug("btcexp:core");
+const fs = require('fs');
 
-var LRU = require("lru-cache");
-var fs = require('fs');
-
-var utils = require("../utils.js");
-var config = require("../config.js");
-var coins = require("../coins.js");
-var redisCache = require("../redisCache.js");
-var Decimal = require("decimal.js");
+const utils = require("../utils.js");
+const config = require("../config.js");
+const coins = require("../coins.js");
+const Cache = require("./../cache.js");
+const Decimal = require("decimal.js");
+const crypto = require('crypto');
 
 // choose one of the below: RPC to a node, or mock data while testing
-var rpcApi = require("./rpcApi.js");
-//var rpcApi = require("./mockApi.js");
-
-
-function onCacheEvent(cacheType, hitOrMiss, cacheKey) {
-	//debugLog(`cache.${cacheType}.${hitOrMiss}: ${cacheKey}`);
-}
-
-function createMemoryLruCache(cacheObj) {
-	return {
-		get:function(key) {
-			return new Promise(function(resolve, reject) {
-				var val = cacheObj.get(key);
-
-				if (val != null) {
-					onCacheEvent("memory", "hit", key);
-
-				} else {
-					onCacheEvent("memory", "miss", key);
-				}
-
-				resolve(cacheObj.get(key));
-			});
-		},
-		set:function(key, obj, maxAge) { cacheObj.set(key, obj, maxAge); }
-	}
-}
-
-var noopCache = {
-	get:function(key) {
-		return new Promise(function(resolve, reject) {
-			resolve(null);
-		});
-	},
-	set:function(key, obj, maxAge) {}
-};
-
-var miscCache = null;
-var blockCache = null;
-var txCache = null;
-
-if (config.noInmemoryRpcCache) {
-	miscCache = noopCache;
-	blockCache = noopCache;
-	txCache = noopCache;
-
-} else {
-	miscCache = createMemoryLruCache(new LRU(50));
-	blockCache = createMemoryLruCache(new LRU(50));
-	txCache = createMemoryLruCache(new LRU(200));
-}
-
-if (redisCache.active) {
-	miscCache = redisCache;
-	blockCache = redisCache;
-	txCache = redisCache;
-}
-
-
-
+const rpcApi = require("./rpcApi.js");
+//var rpcApi = require("./mockApi.js")
+const miscCache = new Cache(process.env.MAX_MISC_CACHE ? process.env.MAX_MISC_CACHE : 100);
+const blockCache = new Cache(process.env.MAX_BLOCK_CACHE ? process.env.MAX_BLOCK_CACHE : 50);
+const txCache = new Cache(process.env.MAX_TX_CACHE ? process.env.MAX_TX_CACHE : 200);
+const assetsCache =  new Cache(process.env.MAX_ASSET_CACHE ? process.env.MAX_ASSET_CACHE : 100);
+const masternodeCache =  new Cache(process.env.MAX_MASTERNODE_CACHE ? process.env.MAX_MASTERNODE_CACHE : 100);
+const chartingCache =  new Cache(process.env.MAX_CHART_CACHE ? process.env.MAX_CHART_CACHE : 1200);
 
 function getGenesisBlockHash() {
 	return coins[config.coin].genesisBlockHash;
@@ -81,55 +28,11 @@ function getGenesisCoinbaseTransactionId() {
 	return coins[config.coin].genesisCoinbaseTransactionId;
 }
 
-
-
-function tryCacheThenRpcApi(cache, cacheKey, cacheMaxAge, rpcApiFunction, cacheConditionFunction) {
-	//debugLog("tryCache: " + cacheKey + ", " + cacheMaxAge);
-	if (cacheConditionFunction == null) {
-		cacheConditionFunction = function(obj) {
-			return true;
-		};
-	}
-
-	return new Promise(function(resolve, reject) {
-		var cacheResult = null;
-
-		var finallyFunc = function() {
-			if (cacheResult != null) {
-				resolve(cacheResult);
-
-			} else {
-				rpcApiFunction().then(function(rpcResult) {
-					if (rpcResult != null && cacheConditionFunction(rpcResult)) {
-						cache.set(cacheKey, rpcResult, cacheMaxAge);
-					}
-
-					resolve(rpcResult);
-
-				}).catch(function(err) {
-					reject(err);
-				});
-			}
-		};
-
-		cache.get(cacheKey).then(function(result) {
-			cacheResult = result;
-
-			finallyFunc();
-			
-		}).catch(function(err) {
-			utils.logError("nds9fc2eg621tf3", err, {cacheKey:cacheKey});
-
-			finallyFunc();
-		});
-	});
-}
-
 function shouldCacheTransaction(tx) {
 	if (!tx.confirmations) {
 		return false;
 	}
-	
+
 	if (tx.confirmations < 1) {
 		return false;
 	}
@@ -141,44 +44,146 @@ function shouldCacheTransaction(tx) {
 	return true;
 }
 
-
-
 function getBlockchainInfo() {
-	return tryCacheThenRpcApi(miscCache, "getBlockchainInfo", 10000, rpcApi.getBlockchainInfo);
+	return miscCache.tryCache("getBlockchainInfo", 10000, rpcApi.getBlockchainInfo);
 }
 
-function getBlockCount() {
-	return tryCacheThenRpcApi(miscCache, "getblockcount", 10000, rpcApi.getBlockCount);
+function getBlockCount(req) {
+	if(req && req.query.nocache) {
+		return rpcApi.getBlockCount();
+	}
+	return miscCache.tryCache("getblockcount", 10000, rpcApi.getBlockCount);
 }
 
 function getNetworkInfo() {
-	return tryCacheThenRpcApi(miscCache, "getNetworkInfo", 10000, rpcApi.getNetworkInfo);
+	return miscCache.tryCache("getNetworkInfo", 10000, rpcApi.getNetworkInfo);
 }
 
 function getNetTotals() {
-	return tryCacheThenRpcApi(miscCache, "getNetTotals", 10000, rpcApi.getNetTotals);
+	return miscCache.tryCache("getNetTotals", 10000, rpcApi.getNetTotals);
 }
 
 function getMempoolInfo() {
-	return tryCacheThenRpcApi(miscCache, "getMempoolInfo", 1000, rpcApi.getMempoolInfo);
+	return miscCache.tryCache("getMempoolInfo", 1000, rpcApi.getMempoolInfo);
 }
 
 function getMiningInfo() {
-	return tryCacheThenRpcApi(miscCache, "getMiningInfo", 30000, rpcApi.getMiningInfo);
+	return miscCache.tryCache("getMiningInfo", 30000, rpcApi.getMiningInfo);
 }
 
 function getUptimeSeconds() {
-	return tryCacheThenRpcApi(miscCache, "getUptimeSeconds", 1000, rpcApi.getUptimeSeconds);
+	return miscCache.tryCache("getUptimeSeconds", 1000, rpcApi.getUptimeSeconds);
+}
+function getMarketCap() {
+	return miscCache.tryCache("getMarketCap", 1200000, () => {
+		return new Promise(async (resolve, reject) => {
+			try {
+				var supply = Number(await getSupply());
+				var marketCap = `${utils.formatExchangedCurrency(supply, "btc", "฿", 2, true)}/${utils.formatExchangedCurrency(supply, "usd", "$", 2, true)}`
+				resolve(marketCap);
+			} catch(e) {
+				reject(e);
+			}
+		});
+	});
+}
+function totalCoinLockedByMN() {
+	return miscCache.tryCache("totalCoinLockedByMN", 1800000, () => {
+		return new Promise(async (resolve, reject) => {
+			try {
+				var totalCoinLocked = await rpcApi.totalCoinLockedByMN();
+				var supply = await getSupply();
+				resolve(`${Number(totalCoinLocked).toLocaleString()} / ${Number(totalCoinLocked * 100.00 / supply).toFixed(2)}%`);
+			} catch(e) {
+				reject(e);
+			}
+		});
+	});
+
+}
+function getNetworkHash(height) {
+	return chartingCache.tryCache("getNetworkHash-" + height, 86400000, () => {
+		return rpcApi.getNetworkHash(height);
+	});
 }
 
+function getTotalAssetAddresses(req) {
+	var assetName = req.query.assetname;
+	return assetsCache.tryCache("getTotalAssetAddresses-"+assetName, 300000, () => {
+		return rpcApi.getTotalAssetAddresses(assetName);
+	});
+}
+
+function getAssetAddresses(assetName, start, limit) {
+	return assetsCache.tryCache(`getAssetAddresses-${assetName}-${start}-${limit}`, 300000, function() {
+		return rpcApi.getAssetAddresses(assetName, start, limit);
+	});
+}
+
+function getTotalAddressAssetBalances(req) {
+	var address = req.query.address;
+	return assetsCache.tryCache("getTotalAddressAssetBalances-"+address, 300000, () => {
+		return rpcApi.getTotalAddressAssetBalances(address);
+	});
+}
+
+function getAddressAssetBalances(address, start, limit) {
+	return assetsCache.tryCache(`getAddressAssetBalances-${address}-${start}-${limit}`, 300000, function() {
+		return rpcApi.getAddressAssetBalances(address, start, limit);
+	});
+}
+
+function getTotalAssetCount(filter) {
+	return assetsCache.tryCache("getTotalAssetCount-"+filter, 300000, () => {
+		return rpcApi.getTotalAssetCount(filter);
+	});
+}
+function queryAssets(searchTerm, start, limit) {
+	return assetsCache.tryCache(`queryAssets-${searchTerm}-${start}-${limit}`, 300000, function() {
+		return rpcApi.queryAssets(searchTerm, start, limit);
+	});
+}
+
+function getAddressDetails(address, scriptPubkey, sort, limit, offset, assetName) {
+	return miscCache.tryCache(`getAddressDetails-${address}-${assetName}-${sort}-${limit}-${offset}`, 300000, function() {
+		return rpcApi.getAddressDetails(address, scriptPubkey, sort, limit, offset, assetName);
+	});
+}
+
+function getAddressBalance(address, scriptPubkey) {
+	return miscCache.tryCache("getAddressBalance-" + address, 300000, function() {
+		return rpcApi.getAddressBalance(address, scriptPubkey);
+	});
+}
+function getAddressUTXOs(address, scriptPubkey) {
+	return miscCache.tryCache("getAddressUTXOs-" + address, 1200000, function() {
+		return rpcApi.getAddressUTXOs(address, scriptPubkey);
+	});
+}
+
+function getMasternodeReachableCount() {
+	return masternodeCache.tryCache("getMasternodeReachableCount", 1800000, function() {
+		return rpcApi.getMasternodeReachableCount();
+	});
+}
+
+
 function getChainTxStats(blockCount) {
-	return tryCacheThenRpcApi(miscCache, "getChainTxStats-" + blockCount, 1200000, function() {
+	return miscCache.tryCache("getChainTxStats-" + blockCount, 1200000, function() {
 		return rpcApi.getChainTxStats(blockCount);
 	});
 }
 
+function getDifficultyData(name, difficulty) {
+	return {
+			name : name,
+			diff : difficulty,
+			diffCal : utils.formatLargeNumber(difficulty, 3)
+	}
+}
+
 function getTxCountStats(dataPtCount, blockStart, blockEnd) {
-	return new Promise(function(resolve, reject) {
+	return new Promise(async function(resolve, reject) {
 		var dataPoints = dataPtCount;
 
 		getBlockchainInfo().then(function(getblockchaininfo) {
@@ -208,9 +213,12 @@ function getTxCountStats(dataPtCount, blockStart, blockEnd) {
 				blockEnd += getblockchaininfo.blocks;
 			}
 
-			var chainTxStatsIntervals = [];
-			for (var i = 0; i < dataPoints; i++) {
-				chainTxStatsIntervals.push(parseInt(Math.max(10, getblockchaininfo.blocks - blockStart - i * (blockEnd - blockStart) / (dataPoints - 1) - 1)));
+			let chainTxStatsIntervals = [];
+			for (let i = 0; i < dataPoints; i++) {
+				let values = Number(getblockchaininfo.blocks) - Number(blockStart) - i * (Number(blockEnd) - Number(blockStart)) / (Number(dataPoints) - 1) - 1;
+				let block = Math.max(10, values);
+				block = Math.floor(block)
+				chainTxStatsIntervals.push(block);
 			}
 
 			var promises = [];
@@ -220,21 +228,25 @@ function getTxCountStats(dataPtCount, blockStart, blockEnd) {
 
 			Promise.all(promises).then(function(results) {
 				var txStats = {
-					txCounts: [],
-					txLabels: [],
-					txRates: []
-				};
-
-				for (var i = results.length - 1; i >= 0; i--) {
-					if (results[i].window_tx_count) {
-						txStats.txCounts.push( {x:(getblockchaininfo.blocks - results[i].window_block_count), y: (results[i].txcount - results[i].window_tx_count)} );
-						txStats.txRates.push( {x:(getblockchaininfo.blocks - results[i].window_block_count), y: (results[i].txrate)} );
-						txStats.txLabels.push(i);
-					}
-				}
-				
-				resolve({txCountStats:txStats, getblockchaininfo:getblockchaininfo, totalTxCount:results[0].txcount});
-
+                txCounts: [],
+                txLabels: [],
+                txRates: []
+        };
+        for (var i = results.length - 1; i >= 0; i--) {
+                if (results[i].window_tx_count) {
+                        txStats.txCounts.push( {x:(getblockchaininfo.blocks - results[i].window_block_count), y: (results[i].txcount - results[i].window_tx_count)} );
+                        txStats.txRates.push( {x:(getblockchaininfo.blocks - results[i].window_block_count), y: (results[i].txrate)} );
+                        txStats.txLabels.push(i);
+                }
+        }
+        var txcount;
+        i = 0;
+        while(!txcount) {
+                txcount = results[i].txcount;
+                i++
+        }
+        var stats = {txCountStats:txStats, getblockchaininfo:getblockchaininfo, totalTxCount: txcount};
+        resolve(stats);
 			}).catch(function(err) {
 				reject(err);
 			});
@@ -247,7 +259,7 @@ function getTxCountStats(dataPtCount, blockStart, blockEnd) {
 
 function getPeerSummary() {
 	return new Promise(function(resolve, reject) {
-		tryCacheThenRpcApi(miscCache, "getpeerinfo", 1000, rpcApi.getPeerInfo).then(function(getpeerinfo) {
+		miscCache.tryCache("getpeerinfo", 1000, rpcApi.getPeerInfo).then(function(getpeerinfo) {
 			var result = {};
 			result.getpeerinfo = getpeerinfo;
 
@@ -264,7 +276,7 @@ function getPeerSummary() {
 
 			var versionSummary = [];
 			for (var prop in versionSummaryMap) {
-				if (versionSummaryMap.hasOwnProperty(prop)) {
+				if (Object.hasOwn(versionSummaryMap, prop)) {
 					versionSummary.push([prop, versionSummaryMap[prop]]);
 				}
 			}
@@ -296,7 +308,7 @@ function getPeerSummary() {
 
 			var servicesSummary = [];
 			for (var prop in servicesSummaryMap) {
-				if (servicesSummaryMap.hasOwnProperty(prop)) {
+				if (Object.hasOwn(servicesSummaryMap, prop)) {
 					servicesSummary.push([prop, servicesSummaryMap[prop]]);
 				}
 			}
@@ -326,51 +338,44 @@ function getPeerSummary() {
 	});
 }
 
+function getMempoolTxids(verbose = false) {
+	return miscCache.tryCache("getMempoolTxidSummary", 1000, rpcApi.getMempoolTxids);
+}
+
 function getMempoolDetails(start, count) {
 	return new Promise(function(resolve, reject) {
-		tryCacheThenRpcApi(miscCache, "getMempoolTxids", 1000, rpcApi.getMempoolTxids).then(function(resultTxids) {
-			var txids = [];
+		miscCache.tryCache("getMempoolTxids", 1000, rpcApi.getMempoolTxids).then(function(resultTxids) {
+			let txids = [];
 
-			for (var i = start; (i < resultTxids.length && i < (start + count)); i++) {
+			for (let i = start; (i < resultTxids.length && i < (start + count)); i++) {
 				txids.push(resultTxids[i]);
 			}
 
 			getRawTransactions(txids).then(function(transactions) {
-				var maxInputsTracked = config.site.txMaxInput;
-				var vinTxids = [];
-				for (var i = 0; i < transactions.length; i++) {
-					var transaction = transactions[i];
-
+				let maxInputsTracked = config.site.txMaxInput;
+				let vinMap = {};
+				for (let transaction of transactions) {
 					if (transaction && transaction.vin) {
-						for (var j = 0; j < Math.min(maxInputsTracked, transaction.vin.length); j++) {
-							if (transaction.vin[j].txid) {
-								vinTxids.push(transaction.vin[j].txid);
+						for (let j = 0; j < Math.min(maxInputsTracked, transaction.vin.length); j++) {
+							let vin = transaction.vin[j];
+							if (vin.txid && !vin.address) {
+								vinMap[vin.txid] = vin;
 							}
 						}
 					}
+					transaction.vout.forEach(utils.findAddressVout);
 				}
 
-				var txInputsByTransaction = {};
-				getRawTransactions(vinTxids).then(function(vinTransactions) {
-					var vinTxById = {};
+				getRawTransactions(Object.keys(vinMap)).then(function(vinTransactions) {
 
 					vinTransactions.forEach(function(tx) {
-						vinTxById[tx.txid] = tx;
+						let vin = vinMap[tx.txid];
+						let inputVout = tx.vout[vin.vout];
+						utils.extractedVinVout(inputVout, vin);
 					});
 
-					transactions.forEach(function(tx) {
-						txInputsByTransaction[tx.txid] = {};
 
-						if (tx && tx.vin) {
-							for (var i = 0; i < Math.min(maxInputsTracked, tx.vin.length); i++) {
-								if (vinTxById[tx.vin[i].txid]) {
-									txInputsByTransaction[tx.txid][i] = vinTxById[tx.vin[i].txid];
-								}
-							}
-						}
-					});
-
-					resolve({ txCount:resultTxids.length, transactions:transactions, txInputsByTransaction:txInputsByTransaction });
+					resolve({ txCount:resultTxids.length, transactions:transactions });
 
 				}).catch(function(err) {
 					reject(err);
@@ -388,7 +393,7 @@ function getMempoolDetails(start, count) {
 
 function getMempoolStats() {
 	return new Promise(function(resolve, reject) {
-		tryCacheThenRpcApi(miscCache, "getRawMempool", 5000, rpcApi.getRawMempool).then(function(result) {
+		miscCache.tryCache("getRawMempool", 5000, rpcApi.getRawMempool).then(function(result) {
 			var maxFee = 0;
 			var maxFeePerByte = 0;
 			var maxAge = 0;
@@ -571,13 +576,14 @@ function getMempoolStats() {
 }
 
 function getBlockByHeight(blockHeight) {
-	return tryCacheThenRpcApi(blockCache, "getBlockByHeight-" + blockHeight, 3600000, function() {
+	return blockCache.tryCache("getBlockByHeight-" + blockHeight, 3600000, function() {
 		return rpcApi.getBlockByHeight(blockHeight);
 	});
 }
 
-function getBlock(blockHeight) {
-	return tryCacheThenRpcApi(blockCache, "getBlock-" + blockHeight, 3600000, function() {
+function getBlock(req) {
+	var blockHeight = req.query.height;
+	return blockCache.tryCache("getBlock-" + blockHeight, 3600000, function() {
 		return rpcApi.getBlock(blockHeight);
 	});
 }
@@ -599,7 +605,7 @@ function getBlocksByHeight(blockHeights) {
 }
 
 function getBlockByHash(blockHash) {
-	return tryCacheThenRpcApi(blockCache, "getBlockByHash-" + blockHash, 3600000, function() {
+	return blockCache.tryCache("getBlockByHash-" + blockHash, 3600000, function() {
 		return rpcApi.getBlockByHash(blockHash);
 	});
 }
@@ -626,12 +632,21 @@ function getBlocksByHash(blockHashes) {
 	});
 }
 
-function getRawTransaction(txid) {
+function getRawTransaction(req) {
+	var txid = req.query.txid;
 	var rpcApiFunction = function() {
 		return rpcApi.getRawTransaction(txid);
 	};
 
-	return tryCacheThenRpcApi(txCache, "getRawTransaction-" + txid, 3600000, rpcApiFunction, shouldCacheTransaction);
+	return txCache.tryCache("getRawTransaction-" + txid, 60000, rpcApiFunction, shouldCacheTransaction);
+}
+
+function getRawTransactions(txids) {
+	var txidsHash = crypto.createHash('sha256').update(txids + "").digest('hex');
+	return txCache.tryCache("getRawTransactions-" + txidsHash, 360000, function() {
+		return rpcApi.getRawTransactions(txids);
+	});
+
 }
 
 function getTxUtxos(tx) {
@@ -653,17 +668,16 @@ function getTxUtxos(tx) {
 
 function getUtxo(txid, outputIndex) {
 	return new Promise(function(resolve, reject) {
-		tryCacheThenRpcApi(miscCache, "utxo-" + txid + "-" + outputIndex, 3600000, function() {
+		miscCache.tryCache("utxo-" + txid + "-" + outputIndex, 3600000, function() {
 			return rpcApi.getUtxo(txid, outputIndex);
 
 		}).then(function(result) {
 			// to avoid cache misses, rpcApi.getUtxo returns "0" instead of null
-			if (result == "0") {
+			if (result === "0") {
 				resolve(null);
 
 				return;
 			}
-
 			resolve(result);
 
 		}).catch(function(err) {
@@ -673,38 +687,64 @@ function getUtxo(txid, outputIndex) {
 }
 
 function getMempoolTxDetails(txid) {
-	return tryCacheThenRpcApi(miscCache, "mempoolTxDetails-" + txid, 3600000, function() {
+	return miscCache.tryCache("mempoolTxDetails-" + txid, 3600000, function() {
 		return rpcApi.getMempoolTxDetails(txid);
 	});
 }
 
 function getAddress(address) {
-	return tryCacheThenRpcApi(miscCache, "getAddress-" + address, 3600000, function() {
+	return miscCache.tryCache("getAddress-" + address, 3600000, function() {
 		return rpcApi.getAddress(address);
 	});
 }
 
-function getRawTransactions(txids) {
-	return new Promise(function(resolve, reject) {
-		var promises = [];
-		for (var i = 0; i < txids.length; i++) {
-			promises.push(getRawTransaction(txids[i]));
-		}
+function smartnode(req) {
+	return masternode(req, "smartnode")
+}
 
-		Promise.all(promises).then(function(results) {
-			resolve(results);
+function masternode(req, masternodeCommand = "masternode") {
+	var command = req.query.command;
+	return masternodeCache.tryCache(masternodeCommand + "-" + command, 60000, function() {
+		return rpcApi.masternode(command, masternodeCommand);
+	});
+}
 
-		}).catch(function(err) {
-			reject(err);
-		});
+function nullableValue(value) {
+	return value ? value : "";
+}
+
+function protx(req) {
+	var command = req.query.command;
+	var protxHash = req.query.protxhash;
+	var baseBlock = req.query.baseblock;
+	var block = req.query.block;
+	var cacheKey = `protx-${nullableValue(command)}-${nullableValue(protxHash)}-${nullableValue(baseBlock)}-${nullableValue(block)}`;
+	return miscCache.tryCache(cacheKey, 60000, function() {
+		return rpcApi.protx(command, req.query);
+	});
+}
+
+function quorum(req) {
+	var command = req.query.command;
+	var protxHash = req.query.protxhash;
+	var llmqType = req.query.llmqtype;
+	var count = req.query.count;
+	var quorumHash = req.query.quorumhash;
+	var skshare = req.query.skshare;
+	var id = req.query.id;
+	var msgHash = req.query.msghash
+	var cacheKey = `protx-${nullableValue(command)}-${nullableValue(protxHash)}-${nullableValue(llmqType)}-${nullableValue(count)}
+	-${nullableValue(quorumHash)}-${nullableValue(id)}-${nullableValue(msgHash)}-${nullableValue(skshare)}`;
+	return miscCache.tryCache(cacheKey, 60000, function() {
+		return rpcApi.quorum(command, req.query);
 	});
 }
 
 function getRawTransactionsWithInputs(txids, maxInputs=-1) {
 	return new Promise(function(resolve, reject) {
 		getRawTransactions(txids).then(function(transactions) {
-			var maxInputsTracked = config.site.txMaxInput;
-			
+			let maxInputsTracked = config.site.txMaxInput;
+
 			if (maxInputs <= 0) {
 				maxInputsTracked = 1000000;
 
@@ -712,40 +752,35 @@ function getRawTransactionsWithInputs(txids, maxInputs=-1) {
 				maxInputsTracked = maxInputs;
 			}
 
-			var vinTxids = [];
-			for (var i = 0; i < transactions.length; i++) {
-				var transaction = transactions[i];
-
+			let vinMap = {};
+			let voutMap = {};
+			for (let transaction of transactions) {
 				if (transaction && transaction.vin) {
-					for (var j = 0; j < Math.min(maxInputsTracked, transaction.vin.length); j++) {
-						if (transaction.vin[j].txid) {
-							vinTxids.push(transaction.vin[j].txid);
+					for (let j = 0; j < Math.min(maxInputsTracked, transaction.vin.length); j++) {
+						let vin = transaction.vin[j];
+						if (vin.txid && !vin.address) {
+							vinMap[vin.txid] = vin;
+							if (!voutMap[vin.txid])
+								voutMap[vin.txid] = {};
+							voutMap[vin.txid][vin.vout] = vin;
 						}
 					}
 				}
+				transaction.vout.forEach(utils.findAddressVout);
 			}
 
-			var txInputsByTransaction = {};
-			getRawTransactions(vinTxids).then(function(vinTransactions) {
-				var vinTxById = {};
-
+			getRawTransactions(Object.keys(vinMap)).then(function(vinTransactions) {
 				vinTransactions.forEach(function(tx) {
-					vinTxById[tx.txid] = tx;
-				});
-
-				transactions.forEach(function(tx) {
-					txInputsByTransaction[tx.txid] = {};
-
-					if (tx && tx.vin) {
-						for (var i = 0; i < Math.min(maxInputsTracked, tx.vin.length); i++) {
-							if (vinTxById[tx.vin[i].txid]) {
-								txInputsByTransaction[tx.txid][i] = vinTxById[tx.vin[i].txid];
-							}
+					for ( let t in voutMap[tx.txid]) {
+						let vin = voutMap[tx.txid][t];
+						if(vin) {
+							let inputVout = tx.vout[vin.vout];
+							utils.extractedVinVout(inputVout, vin);
 						}
 					}
 				});
 
-				resolve({ transactions:transactions, txInputsByTransaction:txInputsByTransaction });
+				resolve({ transactions:transactions});
 			});
 		});
 	});
@@ -754,64 +789,57 @@ function getRawTransactionsWithInputs(txids, maxInputs=-1) {
 function getBlockByHashWithTransactions(blockHash, txLimit, txOffset) {
 	return new Promise(function(resolve, reject) {
 		getBlockByHash(blockHash).then(function(block) {
-			var txids = [];
-			
+			let txids = [];
+
 			if (txOffset > 0) {
 				txids.push(block.tx[0]);
 			}
-
-			for (var i = txOffset; i < Math.min(txOffset + txLimit, block.tx.length); i++) {
-				txids.push(block.tx[i]);
-			}
-
-			getRawTransactions(txids).then(function(transactions) {
-				if (transactions.length == txids.length) {
-					block.coinbaseTx = transactions[0];
-					block.totalFees = utils.getBlockTotalFeesFromCoinbaseTxAndBlockHeight(block.coinbaseTx, block.height);
-					block.miner = utils.getMinerFromCoinbaseTx(block.coinbaseTx);
+			if(block.tx) {
+				for (let i = txOffset; i < Math.min(txOffset + txLimit, block.tx.length); i++) {
+					txids.push(block.tx[i]);
 				}
+			}
+			let isProofOfState = false;
+			if (block.flags)
+				isProofOfState = block.flags.includes("proof-of-stake")
+			getRawTransactions(txids).then(async (transactions) => {
 
 				// if we're on page 2, we don't really want it anymore...
 				if (txOffset > 0) {
 					transactions.shift();
 				}
 
-				var maxInputsTracked = config.site.txMaxInput;
-				var vinTxids = [];
-				for (var i = 0; i < transactions.length; i++) {
-					var transaction = transactions[i];
-
+				let maxInputsTracked = config.site.txMaxInput;
+				let vinMap = {};
+				for (let transaction of transactions) {
 					if (transaction && transaction.vin) {
-						for (var j = 0; j < Math.min(maxInputsTracked, transaction.vin.length); j++) {
-							if (transaction.vin[j].txid) {
-								vinTxids.push(transaction.vin[j].txid);
+						for (let j = 0; j < Math.min(maxInputsTracked, transaction.vin.length); j++) {
+							let vin = transaction.vin[j];
+							if (vin.txid && !vin.address) {
+								vinMap[vin.txid] = vin;
 							}
 						}
 					}
+					transaction.vout.forEach(utils.findAddressVout);
 				}
-
-				var txInputsByTransaction = {};
-				getRawTransactions(vinTxids).then(function(vinTransactions) {
-					var vinTxById = {};
-
+				try {
+					let vinTransactions = await getRawTransactions(Object.keys(vinMap));
 					vinTransactions.forEach(function(tx) {
-						vinTxById[tx.txid] = tx;
-					});
-
-					transactions.forEach(function(tx) {
-						txInputsByTransaction[tx.txid] = {};
-
-						if (tx && tx.vin) {
-							for (var i = 0; i < Math.min(maxInputsTracked, tx.vin.length); i++) {
-								if (vinTxById[tx.vin[i].txid]) {
-									txInputsByTransaction[tx.txid][i] = vinTxById[tx.vin[i].txid];
-								}
-							}
+						let vin = vinMap[tx.txid];
+						if(vin) {
+							let inputVout = tx.vout[vin.vout];
+							utils.extractedVinVout(inputVout, vin);
 						}
-
-						resolve({ getblock:block, transactions:transactions, txInputsByTransaction:txInputsByTransaction });
 					});
-				});
+					if (transactions.length === txids.length) {
+						block.coinbaseTx = isProofOfState ? transactions[1] : transactions[0];
+						block.totalFees = utils.getBlockTotalFeesFromCoinbaseTxAndBlockHeight(block.coinbaseTx, block.height, isProofOfState);
+						block.miner = utils.getMinerFromCoinbaseTx(block.coinbaseTx);
+					}
+				} catch(err) {
+					console.error(err);
+				}
+				resolve({ getblock:block, transactions:transactions });
 			});
 		});
 	});
@@ -819,7 +847,7 @@ function getBlockByHashWithTransactions(blockHash, txLimit, txOffset) {
 
 function getHelp() {
 	return new Promise(function(resolve, reject) {
-		tryCacheThenRpcApi(miscCache, "getHelp", 3600000, rpcApi.getHelp).then(function(helpContent) {
+		miscCache.tryCache("getHelp", 3600000, rpcApi.getHelp).then(function(helpContent) {
 			var lines = helpContent.split("\n");
 			var sections = [];
 
@@ -855,7 +883,7 @@ function getRpcMethodHelp(methodName) {
 	};
 
 	return new Promise(function(resolve, reject) {
-		tryCacheThenRpcApi(miscCache, "getHelp-" + methodName, 3600000, rpcApiFunction).then(function(helpContent) {
+		miscCache.tryCache("getHelp-" + methodName, 3600000, rpcApiFunction).then(function(helpContent) {
 			var output = {};
 			output.string = helpContent;
 
@@ -931,15 +959,19 @@ function getRpcMethodHelp(methodName) {
 	});
 }
 
+function getOutputAddressBalance(fromHeight, toHeight) {
+	return rpcApi.getOutputAddressBalance(fromHeight, toHeight);
+}
+
 function getSupply() {
-	return tryCacheThenRpcApi(miscCache, "getSupply", 1200000, function() {
+	return miscCache.tryCache("getSupply", 3600000, function() {
 		return rpcApi.getSupply();
 	});
 }
 
 function logCacheSizes() {
 	var itemCounts = [ miscCache.itemCount, blockCache.itemCount, txCache.itemCount ];
-	
+
 	var stream = fs.createWriteStream("memoryUsage.csv", {flags:'a'});
 	stream.write("itemCounts: " + JSON.stringify(itemCounts) + "\n");
 	stream.end();
@@ -976,5 +1008,26 @@ module.exports = {
 	getBlockCount : getBlockCount,
 	getBlock : getBlock,
 	broadcast : rpcApi.broadcast,
-	getSupply : getSupply
+	getSupply : getSupply,
+	getAddressDetails : getAddressDetails,
+	getAddressUTXOs : getAddressUTXOs,
+	getAddressDeltas : rpcApi.getAddressDeltas,
+	getAddressBalance : getAddressBalance,
+	getMempoolTxids : getMempoolTxids,
+	getTotalAssetAddresses : getTotalAssetAddresses,
+	getAssetAddresses : getAssetAddresses,
+	getTotalAddressAssetBalances : getTotalAddressAssetBalances,
+	getAddressAssetBalances : getAddressAssetBalances,
+	getTotalAssetCount : getTotalAssetCount,
+	queryAssets : queryAssets,
+	getNetworkHash : getNetworkHash,
+	masternode : masternode,
+	smartnode : smartnode,
+	protx : protx,
+	quorum : quorum,
+	getMasternodeReachableCount : getMasternodeReachableCount,
+	getOutputAddressBalance : getOutputAddressBalance,
+	totalCoinLockedByMN : totalCoinLockedByMN,
+	getMarketCap : getMarketCap,
+	getAddresessBalance : rpcApi.getAddresessBalance
 };

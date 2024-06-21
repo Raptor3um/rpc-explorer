@@ -1,10 +1,67 @@
-
+let unlimittedIps = process.env.UNLIMIT_IPS ? process.env.UNLIMIT_IPS.split(",") : [];
+let maxRequestsCount = process.env.BTCEXP_HTTP_REQUEST_LIMIT_COUNT ? process.env.BTCEXP_HTTP_REQUEST_LIMIT_COUNT : 100;
+let maxRequestsWindow = process.env.BTCEXP_HTTP_REQUEST_LIMIT_WINDOW ? process.env.BTCEXP_HTTP_REQUEST_LIMIT_WINDOW : 1;
 class CoinBase {
-	constructor(name, ticker, priceid) {
+	constructor(name, ticker, priceid, satUnits = ["sat", "satoshi"]) {
 		this.name = name;
 		this.ticker = ticker;
 		this.priceid = priceid;
 		this.priceApiUrl = `https://api.coingecko.com/api/v3/coins/${priceid}?localization=false`;
+		var currencyUnits = [
+			{
+				type:"native",
+				name:ticker,
+				multiplier:1,
+				default:true,
+				values:["", ticker.toLowerCase(), ticker],
+				decimalPlaces:8
+			},
+			{
+				type:"native",
+				name:"mRTM",
+				multiplier:1000,
+				values:[`m${ticker.toLowerCase()}`],
+				decimalPlaces:5
+			},
+			{
+				type:"native",
+				name:"bits",
+				multiplier:1000000,
+				values:["bits"],
+				decimalPlaces:2
+			},
+			{
+				type:"native",
+				name:"rap",
+				multiplier:100000000,
+				values:satUnits,
+				decimalPlaces:0
+			},
+			{
+				type:"exchanged",
+				name:"BTC",
+				multiplier:"btc",
+				values:["btc"],
+				decimalPlaces:8,
+				symbol:"฿"
+			},
+			{
+				type:"exchanged",
+				name:"USD",
+				multiplier:"usd",
+				values:["usd"],
+				decimalPlaces:8,
+				symbol:"$"
+			},
+			{
+				type:"exchanged",
+				name:"CHY",
+				multiplier:"cny",
+				values:["eur"],
+				decimalPlaces:4,
+				symbol:"¥"
+			},
+		];
 		this.properties = {
 			name : this.name,
 			ticker : this.ticker,
@@ -13,9 +70,86 @@ class CoinBase {
 				jsonUrl:this.priceApiUrl,
 				responseBodySelectorFunction:this.responseBodySelectorFunction
 			},
-			api : this.coinApi
+			api : this.coinApi,
+			maxBlockWeight: 4000000,
+			currencyUnits : currencyUnits,
+			baseCurrencyUnit: currencyUnits[3],
+			defaultCurrencyUnit: currencyUnits[0],
+			tableHeaders : this.tableHeaders()
 		};
 	}
+
+	addTableHeaders(headers) {
+		Object.assign(this.properties.tableHeaders, headers);
+	}
+
+	tableHeaders() {
+		return {
+			transactions_table_headers : [
+				{
+					name : "TXID"
+				},
+				{
+					name : "Confirmations"
+				}
+			],
+			blocks_table_headers : [
+				{
+					name : "Height"
+				},
+				{
+					name : "Timestamp"
+				},
+				{
+					name : "Age"
+				},
+				{
+					name : "Miner"
+				},
+				{
+					name : "Transactions"
+				},
+				{
+					name : "Average Fee"
+				},
+				{
+					name : "Size (bytes)"
+				}
+			],
+			rich_list_table_headers : [
+				{
+					name : "Rank"
+				},
+				{
+					name : "Address"
+				},
+				{
+					name : "Label"
+				},
+				{
+					name : "Balance"
+				}
+			],
+			market_list_table_headers : [
+				{
+					name : "Exchange"
+				},
+				{
+					name : "Pair"
+				},
+				{
+					name : "Price"
+				},
+				{
+					name : "Volume"
+				},
+				{
+					name : "Change"
+				}
+			]
+		}
+	}
+
 	responseBodySelectorFunction(responseBody) {
 		var exchangedCurrencies = ["BTC", "USD", "CNY"];
 
@@ -31,17 +165,39 @@ class CoinBase {
 
 			return exchangeRates;
 		}
-		
+
 		return null;
 	}
-	
+
 	coinApi() {
 		return {
 			base_uri : "/api/",
 			limit : {
-				 windowMs: 15 * 60 * 1000, // 15 minutes
-				 max: 100, // limit each IP to 100 requests per windowMs
-				 message: "Too calls from this IP with 15 mins, please try again after 15 mins"
+				windowMs: maxRequestsWindow * 60 * 1000, // 15 minutes
+				max: maxRequestsCount, // limit each IP to 100 requests per windowMs
+				message: `Too calls from this IP within ${maxRequestsWindow} min, please try again after ${maxRequestsWindow} min. Can't make more then ${maxRequestsCount} requests`,
+				keyGenerator : (req, res) => {
+					var ip = req.headers['x-forwarded-for'];
+					if(!ip) {
+						ip = req.ip;
+					} else {
+						console.log("x-forwarded-for ip", ip);
+					}
+					return ip;
+				},
+				skip : (req, res) => {
+					var ip = req.headers['x-forwarded-for'];
+					if(!ip) {
+						ip = req.ip;
+					}
+					var skip = unlimittedIps.includes(ip);
+					if(skip) {
+						console.log("ip=%s get unlimitted api requests", ip)
+					} else {
+						console.log("ip=%s get limitted api requests. %s/%s min ", ip, maxRequestsCount, maxRequestsWindow)
+					}
+					return skip;
+				}
 			},
 			api_map : [
 				{
@@ -49,11 +205,80 @@ class CoinBase {
 					uri : "getblockcount",
 					api_source : "core",
 					method : "getBlockCount",
+					params : [{
+						name : "nocache",
+						type : "bool",
+						description : "true if get it without cache"
+					}],
 					description : "Get current block height",
 					"return" : "block height as number"
 				},
 				{
-					name : "getblock", 
+					name : "getblocks",
+					uri : "getblocks",
+					api_source : "getBlocks",
+					method : "getBlocks",
+					params : [
+						{
+							name : "start",
+							type : "number",
+							description : "Begin row for query result"
+						},
+						{
+							name : "length",
+							type : "number",
+							description : "max result for the query"
+						},
+						{
+							name : "search.value",
+							type: "object",
+							description : "block height.Specifc height or start-end. Start can be * which mean start from block 0. End can be * which is end at current height."
+						}
+					],
+					description : "Get current block height",
+					"return" : "List of Block information"
+				},
+				{
+					name : "queryrichlist",
+					uri : "queryrichlist",
+					api_source : "queryRichList",
+					method : "queryRichList",
+					params : [
+						{
+							name : "start",
+							type : "number",
+							description : "Begin row for query result"
+						},
+						{
+							name : "length",
+							type : "number",
+							description : "max result for the query"
+						}
+					],
+					description : "Query rich list",
+					"return" : "List of Wallets with balance in descendants order"
+				},
+				{
+					name : "getnetworkhashes",
+					uri : "getnetworkhashes",
+					api_source : "getNetworkHashes",
+					params : [
+						{
+							name : "total",
+							type : "number",
+							description : "total number of blocks to get hashrates starting from certain block or latest block by default"
+						},
+						{
+							name : "from",
+							type : "number",
+							description : "Optional. default to be current height. Starting blocks to get hashrates data"
+						}
+					],
+					description : "Get hashrates for total of blocks starting from block height",
+					"return" : "A map of height and its hashrate"
+				},
+				{
+					name : "getblock",
 					uri : "getblock",
 					api_source : "core",
 					method : "getBlock",
@@ -64,7 +289,7 @@ class CoinBase {
 					}],
 					description : "Get block information by height",
 					"return" : "Json Object of block info in following format: " +
-							`<ul><li>{<br>
+						`<ul><li>{<br>
 			  			  &emsp;&emsp;"hash" : "hash",     (string) the block hash (same as provided)<br>
 						  &emsp;&emsp;"confirmations" : n,   (numeric) The number of confirmations, or -1 if the block is not on the main chain<br>
 						  &emsp;&emsp;"size" : n,            (numeric) The block size<br>
@@ -89,7 +314,7 @@ class CoinBase {
 							}</li></ul>`
 				},
 				{
-					name : "getrawtransaction", 
+					name : "getrawtransaction",
 					uri : "getrawtransaction",
 					api_source : "core",
 					method : "getRawTransaction",
@@ -100,7 +325,7 @@ class CoinBase {
 					}],
 					description : "Get raw detail of a transaction",
 					"return" : "Json Object of transaction info in following format: " +
-							`<ul><li>{
+						`<ul><li>{
 							  <br>&emsp;&emsp;"hex" : "data",       (string) The serialized, hex-encoded data for 'txid'
 							  <br>&emsp;&emsp;"txid" : "id",        (string) The transaction id (same as provided)
 							  <br>&emsp;&emsp;"hash" : "id",        (string) The transaction hash (differs from txid for witness transactions)
@@ -145,7 +370,7 @@ class CoinBase {
 							<br>}</li></ul>`
 				},
 				{
-					name : "getaddressbalance", 
+					name : "getaddressbalance",
 					uri : "getaddressbalance",
 					api_source : "getAddressBalance",
 					params : [{
@@ -155,12 +380,12 @@ class CoinBase {
 					}],
 					description : "Get current balance for specified address",
 					"return" : "Json Object of address balance in following format: " +
-							"<ul><li>{ 'address' : <br>" +
-							"&emsp;{ 'confirmed' : satoshi_amount, <br>" +
-							"&emsp;&nbsp;&nbsp;'unconfirmed' : satoshi_amount }<br>}</li></ul>"
+						"<ul><li>{ 'address' : <br>" +
+						"&emsp;{ 'confirmed' : satoshi_amount, <br>" +
+						"&emsp;&nbsp;&nbsp;'unconfirmed' : satoshi_amount }<br>}</li></ul>"
 				},
 				{
-					name : "getaddressutxos", 
+					name : "getaddressutxos",
 					uri : "getaddressutxos",
 					api_source : "getAddressUTXOs",
 					params : [{
@@ -170,14 +395,14 @@ class CoinBase {
 					}],
 					description : "Get list of unspent transactions meta data for specified address",
 					"return" : "Json Object of address utxo in following format: " +
-							"<ul><li>{ 'address' : <br>" +
-							"&emsp;&emsp;[<br>" +
-							"&emsp;&emsp;&nbsp;&nbsp;{ 'tx_hash' : txid, <br>" +
-							"&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;'tx_pos' : index, <br>" +
-							"&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;'height' : block_height, <br>" +
-							"&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;'value' : satoshi_amount }, <br>" +
-							"&emsp;&emsp;... ]<br>" +
-							"}</li></ul>"
+						"<ul><li>{ 'address' : <br>" +
+						"&emsp;&emsp;[<br>" +
+						"&emsp;&emsp;&nbsp;&nbsp;{ 'tx_hash' : txid, <br>" +
+						"&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;'tx_pos' : index, <br>" +
+						"&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;'height' : block_height, <br>" +
+						"&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;'value' : satoshi_amount }, <br>" +
+						"&emsp;&emsp;... ]<br>" +
+						"}</li></ul>"
 				},
 				{
 					name : "getmininginfo",
@@ -207,6 +432,14 @@ class CoinBase {
 					"return" : "current coin supply as number"
 				},
 				{
+					name : "marketcap",
+					uri : "marketcap",
+					api_source : "core",
+					method : "getMarketCap",
+					description : "Get current market cap",
+					"return" : "current coin market cap ฿ value / $ value. i.e ฿1/$4400"
+				},
+				{
 					name : "broadcast",
 					uri : "broadcast",
 					api_source : "core",
@@ -218,11 +451,27 @@ class CoinBase {
 					}],
 					description : "broadcast transaction",
 					"return" : "txid"
+				},
+				{
+					name : "getlatesttxids",
+					uri : "getlatesttxids",
+					api_source : "getLatestTxids",
+					params : [{
+						name : "blocks",
+						type : "number",
+						description : "Number of latest blocks to get transactions from"
+					}],
+					description : "Get all transactions from the last x blocks",
+					"return" : "JSON object in the following format: " +
+						`<ul><li>{
+						  <br>&emsp;&emsp;"data": array of txids object
+						  <br>&emsp;&emsp;"columns": an column maping array to be use for jquery data table
+						  <br>}</li><ul>`
 				}
 			]
 		}
 	}
-	
+
 	addProperties(properties) {
 		Object.assign(this.properties, properties);
 	}

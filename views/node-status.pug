@@ -2,18 +2,18 @@ extends layout
 
 block headContent
 	title Node Status
-	
+
 block content
 	h1.h3 Node Status
 	hr
 
 	if (getblockchaininfo)
 		if (false)
-			p Data from RPC commands 
+			p Data from RPC commands
 				a(href="/rpc-browser?method=getblockchaininfo") getblockchaininfo
-				span , 
-				a(href="/rpc-browser?method=getnetworkinfo") getnetworkinfo
-				span , and 
+				span ,
+				a(href="/rpc-browser?method=") getnetworkinfo
+				span , and
 				a(href="/rpc-browser?method=getnettotals") getnettotals
 
 		if (false)
@@ -36,7 +36,7 @@ block content
 						table(class="table details-table mb-0")
 							tr
 								td(class="properties-header") Host : Port
-								td(class="monospace") #{global.rpcClient.host + " : " + global.rpcClient.port}
+								td(class="monospace") #{global.rpcClient.display_host + " : " + global.rpcClient.port}
 
 							tr
 								td(class="properties-header") Chain
@@ -65,15 +65,14 @@ block content
 								td(class="monospace") #{getblockchaininfo.blocks.toLocaleString()}
 									br
 									span(class="text-muted") (headers: #{getblockchaininfo.headers.toLocaleString()})
-							tr
-								td(class="properties-header") Difficulty
-								td(class="monospace")
-									- var difficultyData = utils.formatLargeNumber(getblockchaininfo.difficulty, 3);
-									
-									span(title=parseFloat(getblockchaininfo.difficulty).toLocaleString(), data-toggle="tooltip")
-										span #{difficultyData[0]}
-										span  x 10
-										sup #{difficultyData[1].exponent}
+							each difficultyData, index in getblockchaininfo.difficultiesData
+								tr
+									td(class="properties-header") #{difficultyData.name}
+									td(class="monospace")
+										span(title=parseFloat(difficultyData.diff).toLocaleString(), data-toggle="tooltip")
+											span #{difficultyData.diffCal[0]}
+											span  x 10
+											sup #{difficultyData.diffCal[1].exponent}
 
 							tr
 								td(class="properties-header") Status
@@ -119,7 +118,7 @@ block content
 						a(data-toggle="tab", href="#tab-getnettotals", class="nav-link", role="tab") getnettotals
 					li(class="nav-item")
 						a(data-toggle="tab", href="#tab-getnetworkinfo", class="nav-link", role="tab") getnetworkinfo
-				
+
 				div(class="tab-content")
 					div(id="tab-getblockchaininfo", class="tab-pane active", role="tabpanel")
 						pre
@@ -132,5 +131,3 @@ block content
 					div(id="tab-getnetworkinfo", class="tab-pane", role="tabpanel")
 						pre
 							code.json.bg-light(data-lang="json") #{JSON.stringify(getnetworkinfo, null, 4)}
-							
-										

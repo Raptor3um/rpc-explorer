@@ -1,19 +1,18 @@
-var debug = require("debug");
+let debug = require("debug");
 
-var debugLog = debug("btcexp:utils");
-var debugErrorLog = debug("btcexp:error");
+let debugLog = debug("btcexp:utils");
+let debugErrorLog = debug("btcexp:error");
 
-var Decimal = require("decimal.js");
-var request = require("request");
-var qrcode = require("qrcode");
+let Decimal = require("decimal.js");
+let request = require("request");
+let qrcode = require("qrcode");
 
-var config = require("./config.js");
-var coins = require("./coins.js");
-var coinConfig = coins[config.coin];
-var redisCache = require("./redisCache.js");
+let config = require("./config.js");
+let coins = require("./coins.js");
+const bitcoinjs = require("bitcoinjs-lib");
+let coinConfig = coins[config.coin];
 
-
-var exponentScales = [
+let exponentScales = [
 	{val:1000000000000000000000000000000000, name:"?", abbreviation:"V", exponent:"33"},
 	{val:1000000000000000000000000000000, name:"?", abbreviation:"W", exponent:"30"},
 	{val:1000000000000000000000000000, name:"?", abbreviation:"X", exponent:"27"},
@@ -24,56 +23,27 @@ var exponentScales = [
 	{val:1000000000000, name:"tera", abbreviation:"T", exponent:"12"},
 	{val:1000000000, name:"giga", abbreviation:"G", exponent:"9"},
 	{val:1000000, name:"mega", abbreviation:"M", exponent:"6"},
-	{val:1000, name:"kilo", abbreviation:"K", exponent:"3"}
+	{val:1000, name:"kilo", abbreviation:"K", exponent:"3"},
+	{val:0.1, name:"kilo", abbreviation:"", exponent:"-1"},
+	{val:0.01, name:"kilo", abbreviation:"", exponent:"-2"},
+	{val:0.001, name:"kilo", abbreviation:"", exponent:"-3"},
+	{val:0.0001, name:"kilo", abbreviation:"", exponent:"-4"},
+	{val:0.00001, name:"kilo", abbreviation:"", exponent:"-5"},
+	{val:0.000001, name:"kilo", abbreviation:"", exponent:"-6"}
+
+
 ];
-
-var ipMemoryCache = {};
-var ipCache = {
-	get:function(key) {
-		return new Promise(function(resolve, reject) {
-			if (ipMemoryCache[key] != null) {
-				resolve({key:key, value:ipMemoryCache[key]});
-
-				return;
-			}
-
-			if (redisCache.active) {
-				redisCache.get("ip-" + key).then(function(redisResult) {
-					if (redisResult != null) {
-						resolve({key:key, value:redisResult});
-
-						return;
-					}
-
-					resolve({key:key, value:null});
-				});
-
-			} else {
-				resolve({key:key, value:null});
-			}
-		});
-	},
-	set:function(key, value, expirationMillis) {
-		ipMemoryCache[key] = value;
-
-		if (redisCache.active) {
-			redisCache.set("ip-" + key, value, expirationMillis);
-		}
-	}
-};
-
-
 
 function redirectToConnectPageIfNeeded(req, res) {
 	if (!req.session.host) {
 		req.session.redirectUrl = req.originalUrl;
-		
+
 		res.redirect("/");
 		res.end();
-		
+
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -82,14 +52,14 @@ function hex2ascii(hex) {
 	for (var i = 0; i < hex.length; i += 2) {
 		str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
 	}
-	
+
 	return str;
 }
 
 function splitArrayIntoChunks(array, chunkSize) {
 	var j = array.length;
 	var chunks = [];
-	
+
 	for (var i = 0; i < j; i += chunkSize) {
 		chunks.push(array.slice(i, i + chunkSize));
 	}
@@ -99,28 +69,28 @@ function splitArrayIntoChunks(array, chunkSize) {
 
 function getRandomString(length, chars) {
     var mask = '';
-	
+
     if (chars.indexOf('a') > -1) {
 		mask += 'abcdefghijklmnopqrstuvwxyz';
 	}
-	
+
     if (chars.indexOf('A') > -1) {
 		mask += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 	}
-	
+
     if (chars.indexOf('#') > -1) {
 		mask += '0123456789';
 	}
-    
+
 	if (chars.indexOf('!') > -1) {
 		mask += '~`!@#$%^&*()_+-={}[]:";\'<>?,./|\\';
 	}
-	
+
     var result = '';
     for (var i = length; i > 0; --i) {
 		result += mask[Math.floor(Math.random() * mask.length)];
 	}
-	
+
 	return result;
 }
 
@@ -148,7 +118,7 @@ function getCurrencyFormatInfo(formatType) {
 	return null;
 }
 
-function formatCurrencyAmountWithForcedDecimalPlaces(amount, formatType, forcedDecimalPlaces) {
+function formatCurrencyAmountWithForcedDecimalPlaces(amount, formatType, assetName, forcedDecimalPlaces) {
 	var formatInfo = getCurrencyFormatInfo(formatType);
 	if (formatInfo != null) {
 		var dec = new Decimal(amount);
@@ -161,11 +131,11 @@ function formatCurrencyAmountWithForcedDecimalPlaces(amount, formatType, forcedD
 		if (forcedDecimalPlaces >= 0) {
 			decimalPlaces = forcedDecimalPlaces;
 		}
-
+		//console.log("formatCurrencyAmountWithForcedDecimalPlaces assetName=", assetName);
 		if (formatInfo.type == "native") {
 			dec = dec.times(formatInfo.multiplier);
-
-			return addThousandsSeparators(dec.toDecimalPlaces(decimalPlaces)) + " " + formatInfo.name;
+			var name = !assetName || assetName === coinConfig.ticker ? formatInfo.name : assetName;
+			return addThousandsSeparators(dec.toDecimalPlaces(decimalPlaces)) + " " + name;
 
 		} else if (formatInfo.type == "exchanged") {
 			if (global.exchangeRates != null && global.exchangeRates[formatInfo.multiplier] != null) {
@@ -174,20 +144,20 @@ function formatCurrencyAmountWithForcedDecimalPlaces(amount, formatType, forcedD
 				return addThousandsSeparators(dec.toDecimalPlaces(decimalPlaces)) + " " + formatInfo.name;
 
 			} else {
-				return formatCurrencyAmountWithForcedDecimalPlaces(amount, coinConfig.defaultCurrencyUnit.name, forcedDecimalPlaces);
+				return formatCurrencyAmountWithForcedDecimalPlaces(amount, coinConfig.defaultCurrencyUnit.name, assetName, forcedDecimalPlaces);
 			}
 		}
 	}
-	
+
 	return amount;
 }
 
-function formatCurrencyAmount(amount, formatType) {
-	return formatCurrencyAmountWithForcedDecimalPlaces(amount, formatType, -1);
+function formatCurrencyAmount(amount, formatType, assetName) {
+	return formatCurrencyAmountWithForcedDecimalPlaces(amount, formatType,assetName, -1);
 }
 
-function formatCurrencyAmountInSmallestUnits(amount, forcedDecimalPlaces) {
-	return formatCurrencyAmountWithForcedDecimalPlaces(amount, coins[config.coin].baseCurrencyUnit.name, forcedDecimalPlaces);
+function formatCurrencyAmountInSmallestUnits(amount, assetName, forcedDecimalPlaces) {
+	return formatCurrencyAmountWithForcedDecimalPlaces(amount, coins[config.coin].baseCurrencyUnit.name, assetName, forcedDecimalPlaces);
 }
 
 // ref: https://stackoverflow.com/a/2901298/673828
@@ -198,11 +168,14 @@ function addThousandsSeparators(x) {
 	return parts.join(".");
 }
 
-function formatExchangedCurrency(amount, exchangeType, symbol="$", decimal=2) {
+function formatExchangedCurrency(amount, exchangeType, symbol="$", decimal=2, toLocaleString = false) {
 	if (global.exchangeRates != null && global.exchangeRates[exchangeType.toLowerCase()] != null) {
 		var dec = new Decimal(amount);
-		dec = dec.times(global.exchangeRates[exchangeType.toLowerCase()]);
-		return symbol + Number(dec).toFixed(decimal);
+		dec = Number(dec.times(global.exchangeRates[exchangeType.toLowerCase()])).toFixed(decimal);
+		if(toLocaleString) {
+			dec = Number(dec).toLocaleString();
+		}
+		return symbol + dec;
 	}
 
 	return "";
@@ -241,26 +214,36 @@ function getMinerFromCoinbaseTx(tx) {
 	if (tx == null || tx.vin == null || tx.vin.length == 0) {
 		return null;
 	}
-	
+
 	if (global.miningPoolsConfigs) {
 		for (var i = 0; i < global.miningPoolsConfigs.length; i++) {
 			var miningPoolsConfig = global.miningPoolsConfigs[i];
 
 			for (var payoutAddress in miningPoolsConfig.payout_addresses) {
-				if (miningPoolsConfig.payout_addresses.hasOwnProperty(payoutAddress)) {
-					if (tx.vout && tx.vout.length > 0 && tx.vout[0].scriptPubKey && tx.vout[0].scriptPubKey.addresses && tx.vout[0].scriptPubKey.addresses.length > 0) {
-						if (tx.vout[0].scriptPubKey.addresses[0] == payoutAddress) {
+				if(payoutAddress && tx.vout && tx.vout.length > 0) {
+					for(var i in tx.vout) {
+						if(tx.vout[i].scriptPubKey && tx.vout[i].scriptPubKey.addresses &&
+								tx.vout[i].scriptPubKey.addresses && tx.vout[i].scriptPubKey.addresses.includes(payoutAddress)) {
 							var minerInfo = miningPoolsConfig.payout_addresses[payoutAddress];
 							minerInfo.identifiedBy = "payout address " + payoutAddress;
-
 							return minerInfo;
 						}
 					}
 				}
+				// if (miningPoolsConfig.payout_addresses.hasOwnProperty(payoutAddress)) {
+				// 	if (tx.vout && tx.vout.length > 0 && tx.vout[0].scriptPubKey && tx.vout[0].scriptPubKey.addresses && tx.vout[0].scriptPubKey.addresses.length > 0) {
+				// 		if (tx.vout[0].scriptPubKey.addresses[0] == payoutAddress) {
+				// 			var minerInfo = miningPoolsConfig.payout_addresses[payoutAddress];
+				// 			minerInfo.identifiedBy = "payout address " + payoutAddress;
+				//
+				// 			return minerInfo;
+				// 		}
+				// 	}
+				// }
 			}
 
 			for (var coinbaseTag in miningPoolsConfig.coinbase_tags) {
-				if (miningPoolsConfig.coinbase_tags.hasOwnProperty(coinbaseTag)) {
+				if (Object.hasOwn(miningPoolsConfig.coinbase_tags, coinbaseTag)) {
 					if (hex2ascii(tx.vin[0].coinbase).indexOf(coinbaseTag) != -1) {
 						var minerInfo = miningPoolsConfig.coinbase_tags[coinbaseTag];
 						minerInfo.identifiedBy = "coinbase tag '" + coinbaseTag + "'";
@@ -275,57 +258,74 @@ function getMinerFromCoinbaseTx(tx) {
 	return null;
 }
 
-function getTxTotalInputOutputValues(tx, txInputs, blockHeight) {
+function getAssetValue(vout, assetName) {
+	if(assetName === coinConfig.ticker) {
+		return vout.value;
+	}
+	if(vout.scriptPubKey && vout.scriptPubKey.asset) {
+		return vout.scriptPubKey.asset.amount;
+	}
+	return 0;
+}
+
+function getTxTotalInputOutputValues(tx, blockHeight, assetName) {
 	var totalInputValue = new Decimal(0);
 	var totalOutputValue = new Decimal(0);
-
+	if(!assetName) {
+		assetName = coinConfig.ticker;
+	}
 	try {
-		for (var i = 0; i < tx.vin.length; i++) {
-			if (tx.vin[i].coinbase) {
+		for (let i = 0; i < tx.vin.length; i++) {
+			let vin = tx.vin[i];
+			if (vin.coinbase) {
 				totalInputValue = totalInputValue.plus(new Decimal(coinConfig.blockRewardFunction(blockHeight)));
-
 			} else {
-				var txInput = txInputs[i];
-
-				if (txInput) {
+				if (vin.value || vin.scriptPubKey) {
 					try {
-						var vout = txInput.vout[tx.vin[i].vout];
-						if (vout.value) {
-							totalInputValue = totalInputValue.plus(new Decimal(vout.value));
-						}
+						let value = getAssetValue(vin, assetName);
+						totalInputValue = totalInputValue.plus(new Decimal(value));
 					} catch (err) {
 						logError("2397gs0gsse", err, {txid:tx.txid, vinIndex:i});
 					}
 				}
 			}
 		}
-		
-		for (var i = 0; i < tx.vout.length; i++) {
-			totalOutputValue = totalOutputValue.plus(new Decimal(tx.vout[i].value));
+
+		for (let i = 0; i < tx.vout.length; i++) {
+			let value = getAssetValue(tx.vout[i], assetName);
+			totalOutputValue = totalOutputValue.plus(new Decimal(value));
 		}
 	} catch (err) {
-		logError("2308sh0sg44", err, {tx:tx, txInputs:txInputs, blockHeight:blockHeight});
+		logError("2308sh0sg44", err, {tx:tx, blockHeight:blockHeight});
 	}
 
 	return {input:totalInputValue, output:totalOutputValue};
 }
 
-function getBlockTotalFeesFromCoinbaseTxAndBlockHeight(coinbaseTx, blockHeight) {
+function getBlockTotalFeesFromCoinbaseTxAndBlockHeight(coinbaseTx, blockHeight, isProofOfStake) {
 	if (coinbaseTx == null) {
 		return 0;
 	}
 
-	var blockReward = coinConfig.blockRewardFunction(blockHeight);
+	let blockReward = coinConfig.blockRewardFunction(blockHeight);
+	let totalStake = 0;
+	if(isProofOfStake) {
+		for(let vin of coinbaseTx.vin) {
+			if(vin.value) {
+				totalStake += vin.value;
+			}
+		}
+	}
 
-	var totalOutput = new Decimal(0);
-	for (var i = 0; i < coinbaseTx.vout.length; i++) {
-		var outputValue = coinbaseTx.vout[i].value;
+	let totalOutput = new Decimal(0);
+	for (let i = 0; i < coinbaseTx.vout.length; i++) {
+		let outputValue = coinbaseTx.vout[i].value;
 		if (outputValue > 0) {
 			totalOutput = totalOutput.plus(new Decimal(outputValue));
 		}
 	}
 
-	return totalOutput.minus(new Decimal(blockReward));
+	return totalOutput.minus(new Decimal(blockReward + totalStake));
 }
 
 function refreshExchangeRates() {
@@ -355,83 +355,18 @@ function refreshExchangeRates() {
 	}
 }
 
-// Uses ipstack.com API
-function geoLocateIpAddresses(ipAddresses, provider) {
-	return new Promise(function(resolve, reject) {
-		if (config.privacyMode || config.credentials.ipStackComApiAccessKey === undefined) {
-			resolve({});
-
-			return;
-		}
-
-		var ipDetails = {ips:ipAddresses, detailsByIp:{}};
-
-		var promises = [];
-		for (var i = 0; i < ipAddresses.length; i++) {
-			var ipStr = ipAddresses[i];
-			
-			promises.push(new Promise(function(resolve2, reject2) {
-				ipCache.get(ipStr).then(function(result) {
-					if (result.value == null) {
-						var apiUrl = "http://api.ipstack.com/" + result.key + "?access_key=" + config.credentials.ipStackComApiAccessKey;
-						
-						debugLog("Requesting IP-geo: " + apiUrl);
-
-						request(apiUrl, function(error, response, body) {
-							if (error) {
-								reject2(error);
-
-							} else {
-								resolve2({needToProcess:true, response:response});
-							}
-						});
-
-					} else {
-						ipDetails.detailsByIp[result.key] = result.value;
-
-						resolve2({needToProcess:false});
-					}
-				});
-			}));
-		}
-
-		Promise.all(promises).then(function(results) {
-			for (var i = 0; i < results.length; i++) {
-				if (results[i].needToProcess) {
-					var res = results[i].response;
-					if (res != null && res["statusCode"] == 200) {
-						var resBody = JSON.parse(res["body"]);
-						var ip = resBody["ip"];
-
-						ipDetails.detailsByIp[ip] = resBody;
-
-						ipCache.set(ip, resBody, 1000 * 60 * 60 * 24 * 365);
-					}
-				}
-			}
-
-			resolve(ipDetails);
-
-		}).catch(function(err) {
-			logError("80342hrf78wgehdf07gds", err);
-
-			reject(err);
-		});
-	});
-}
-
 function parseExponentStringDouble(val) {
 	var [lead,decimal,pow] = val.toString().split(/e|\./);
-	return +pow <= 0 
+	return +pow <= 0
 		? "0." + "0".repeat(Math.abs(pow)-1) + lead + decimal
 		: lead + ( +pow >= decimal.length ? (decimal + "0".repeat(+pow-decimal.length)) : (decimal.slice(0,+pow)+"."+decimal.slice(+pow)));
 }
 
 function formatLargeNumber(n, decimalPlaces) {
-	for (var i = 0; i < exponentScales.length; i++) {
-		var item = exponentScales[i];
+	for (let i = 0; i < exponentScales.length; i++) {
+		let item = exponentScales[i];
 
-		var fraction = new Decimal(n / item.val);
+		let fraction = new Decimal(n / item.val);
 		if (fraction >= 1) {
 			return [fraction.toDecimalPlaces(decimalPlaces), item];
 		}
@@ -497,7 +432,7 @@ function logError(errorId, err, optionalUserData = null) {
 	}
 
 	debugErrorLog("Error " + errorId + ": " + err + ", json: " + JSON.stringify(err) + (optionalUserData != null ? (", userData: " + optionalUserData + " (json: " + JSON.stringify(optionalUserData) + ")") : ""));
-	
+
 	if (err && err.stack) {
 		debugErrorLog("Stack: " + err.stack);
 	}
@@ -553,16 +488,33 @@ function buildQrCodeUrl(str, results) {
 	});
 }
 
+function getDifficultyData(name, difficulty) {
+	return {
+			name : name,
+			diff : difficulty,
+			diffCal : formatLargeNumber(difficulty, 3)
+	}
+}
+
 function getStatsSummary(json) {
+	//console.log("getStatsSummary %O", json.getblockchaininfo.difficultiesData)
 	var hashrateData = formatLargeNumber(json.miningInfo.networkhashps, 3);
 	var mempoolBytesData = formatLargeNumber(json.mempoolInfo.usage, 2);
 	var chainworkData = formatLargeNumber(parseInt("0x" + json.getblockchaininfo.chainwork), 2);
-	var difficultyData = formatLargeNumber(json.getblockchaininfo.difficulty, 3);
-	var sizeData = formatLargeNumber(json.getblockchaininfo.size_on_disk, 2);
+	var difficultiesData = {};
+	for(var index in json.getblockchaininfo.difficultiesData) {
+		diffData =  json.getblockchaininfo.difficultiesData[index];
+		difficultiesData[diffData.name + "Num"] = diffData.diffCal[0];
+		difficultiesData[diffData.name + "Exp"] = diffData.diffCal[1].exponent;
+	}
+	var sizeData;
+	if(json.getblockchaininfo.size_on_disk) {
+		sizeData = formatLargeNumber(json.getblockchaininfo.size_on_disk, 2);
+	}
 	var price = `${formatExchangedCurrency(1.0, "btc", "฿", 8)}/${formatExchangedCurrency(1.0, "usd", "$", 6)}`
 	mempoolBytesData[1].abbreviation = mempoolBytesData[1].abbreviation ? mempoolBytesData[1].abbreviation : "";
 	return {
-		hashrate : { 
+		hashrate : {
 			rate : hashrateData[0],
 			unit : ` ${hashrateData[1].abbreviation}H = ${hashrateData[1].name}-hash (x10^${hashrateData[1].exponent})`
 		},
@@ -575,16 +527,14 @@ function getStatsSummary(json) {
 			num : chainworkData[0],
 			exp : chainworkData[1].exponent
 		},
-		diff : {
-			num : difficultyData[0],
-			exp : difficultyData[1].exponent
-		},
-		chainSize : `${sizeData[0]} ${sizeData[1].abbreviation}B`,
-		price : price
+		diff : difficultiesData,
+		chainSize : sizeData ? `${sizeData[0]} ${sizeData[1].abbreviation}B` : "N/A",
+		price : price,
+		height : json.getblockchaininfo.blocks
 	}
 	/*
 	updateElementValue("hashrate", hashrateData[0]);
-	updateElementAttr("hashUnit", "data-original-title", `${hashrateData[1].abbreviation}H = ${hashrateData[1].name}-hash (x10^${hashrateData[1].exponent})`);
+	updateElementAttr("hashUnit", "data-oriinal-title", `${hashrateData[1].abbreviation}H = ${hashrateData[1].name}-hash (x10^${hashrateData[1].exponent})`);
 	updateElementValue("txStats", json.txStats.totalTxCount.toLocaleString());
 	updateElementValue("mempoolCount", json.mempoolInfo.size.toLocaleString() + " tx");
 	updateElementValue("mempoolSize", `(${mempoolBytesData[0]} ${mempoolBytesData[1].abbreviation}B)`);
@@ -596,6 +546,31 @@ function getStatsSummary(json) {
 	updateElementValue("price", price);*/
 }
 
+function extractedVinVout(inputVout, vin) {
+	if (inputVout && inputVout.scriptPubKey) {
+		findAddressVout(inputVout);
+		vin.address = inputVout.address;
+		vin.value = inputVout.value;
+		vin.valueSat = inputVout.valueSat;
+		vin.scriptPubKey = inputVout.scriptPubKey;
+	}
+}
+
+function findAddressVout(vout) {
+	if(vout.scriptPubKey.addresses) {
+		vout.address = vout.scriptPubKey.addresses[0];
+	} else if(vout.scriptPubKey.address) {
+		vout.address = vout.scriptPubKey.address;
+	} else if(vout.scriptPubKey.type === "pubkey") {
+		let pubkey = vout.scriptPubKey.asm.substring(0, vout.scriptPubKey.asm.length - 12);
+		let network = coins.networks[config.coin].bitcoinjs
+		let { address} = bitcoinjs.payments.p2pkh({
+			pubkey :  Buffer.from(pubkey, 'hex'),
+			network : network
+		});
+		vout.address = address;
+	}
+}
 
 module.exports = {
 	reflectPromise: reflectPromise,
@@ -617,7 +592,6 @@ module.exports = {
 	refreshExchangeRates: refreshExchangeRates,
 	parseExponentStringDouble: parseExponentStringDouble,
 	formatLargeNumber: formatLargeNumber,
-	geoLocateIpAddresses: geoLocateIpAddresses,
 	getTxTotalInputOutputValues: getTxTotalInputOutputValues,
 	rgbToHsl: rgbToHsl,
 	colorHexToRgb: colorHexToRgb,
@@ -625,5 +599,8 @@ module.exports = {
 	logError: logError,
 	buildQrCodeUrls: buildQrCodeUrls,
 	ellipsize: ellipsize,
-	getStatsSummary: getStatsSummary
+	getStatsSummary: getStatsSummary,
+	getDifficultyData: getDifficultyData,
+	extractedVinVout: extractedVinVout,
+	findAddressVout: findAddressVout
 };
